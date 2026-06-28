@@ -428,15 +428,7 @@ export default function RequestBuilder({
   };
 
   const handleSaveClick = () => {
-    if (!currentRequestId || currentRequestId === -1) {
-      alert("Send the request first or load an existing request to save.");
-      return;
-    }
     dispatch({ type: "SET_SHOW_SAVE_MODAL", payload: true });
-  };
-
-  const handleSaveSuccess = () => {
-    alert("Request saved to collection!");
   };
 
   const activeTabId = activeIndex >= 0 ? tabs[activeIndex]?.id : null;
@@ -549,7 +541,6 @@ export default function RequestBuilder({
           dispatch({ type: "SET_SHOW_SAVE_MODAL", payload: false })
         }
         requestId={currentRequestId!}
-        onSuccess={handleSaveSuccess}
       />
     </div>
   );

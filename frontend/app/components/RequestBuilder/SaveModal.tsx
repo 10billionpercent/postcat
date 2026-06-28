@@ -8,7 +8,6 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   requestId: number;
-  onSuccess: () => void;
 }
 
 type State = {
@@ -72,7 +71,6 @@ export default function SaveModal({
   isOpen,
   onClose,
   requestId,
-  onSuccess,
 }: Props) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const { collections, selectedId, loading, saving, error } = state;
@@ -118,7 +116,6 @@ export default function SaveModal({
         request_id: requestId,
       });
       dispatch({ type: "SAVE_SUCCESS" });
-      onSuccess();
       onClose();
     } catch (err) {
       dispatch({ type: "SAVE_ERROR" });
