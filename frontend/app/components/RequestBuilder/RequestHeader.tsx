@@ -4,6 +4,7 @@ interface Props {
   url: string;
   setUrl: (u: string) => void;
   onSend: () => void;
+  onSave: () => void;
   loading: boolean;
 }
 
@@ -15,6 +16,7 @@ export default function RequestHeader({
   url,
   setUrl,
   onSend,
+  onSave,
   loading,
 }: Props) {
   return (
@@ -38,7 +40,10 @@ export default function RequestHeader({
         className="flex-1 border border-gray-700 bg-gray-900 text-white rounded px-3 py-1 text-sm focus:outline-none focus:border-blue-500"
       />
       <div className="flex gap-1">
-        <button className="px-3 py-1 text-sm text-gray-400 hover:text-white border border-gray-700 rounded">
+        <button
+          onClick={onSave}
+          className="px-3 py-1 text-sm text-gray-400 hover:text-white border border-gray-700 rounded"
+        >
           Save
         </button>
         <button
