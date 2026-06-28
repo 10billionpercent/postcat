@@ -6,6 +6,8 @@ import RequestTabs from "./RequestTabs";
 import ResponsePanel from "./ResponsePanel";
 import BodyEditor from "./BodyEditor";
 import SaveModal from "./SaveModal";
+import RequestTabsBar from "./RequestTabsBar";
+import { Plus } from "lucide-react";
 import {
   sendRequest,
   SendRequestPayload,
@@ -16,7 +18,35 @@ interface RequestBuilderProps {
   initialRequest?: RequestOut | null;
 }
 
+interface Tab {
+  id: string;
+  requestId: number;
+  method: string;
+  url: string;
+  name?: string;
+  requestData: RequestOut;
+}
+
+let tabCounter = 0;
+const generateTabId = () => `tab-${Date.now()}-${++tabCounter}`;
+
+const buildResponseDisplay = (request: RequestOut) => {
+  if (request.response_status && request.response_body) {
+    return {
+      statusCode: request.response_status,
+      headers: request.response_headers || {},
+      body: request.response_body,
+      responseTime: request.response_time || 0,
+      responseSize: new Blob([request.response_body]).size,
+    };
+  }
+  return null;
+};
+
+// ---- State & Actions ----
 type State = {
+  tabs: Tab[];
+  activeIndex: number;
   method: string;
   url: string;
   queryParams: Record<string, string>;
@@ -32,21 +62,24 @@ type State = {
 };
 
 type Action =
-  | { type: "LOAD_REQUEST"; payload: RequestOut }
-  | { type: "SET_METHOD"; payload: string }
-  | { type: "SET_URL"; payload: string }
-  | { type: "SET_QUERY_PARAMS"; payload: Record<string, string> }
-  | { type: "SET_HEADERS"; payload: Record<string, string> }
-  | { type: "SET_AUTH"; payload: any }
-  | { type: "SET_BODY"; payload: string }
-  | { type: "SET_BODY_TYPE"; payload: string }
-  | { type: "SET_CURRENT_REQUEST_ID"; payload: number | null }
-  | { type: "SET_RESPONSE"; payload: any }
+  | { type: "OPEN_REQUEST"; payload: RequestOut }
+  | { type: "OPEN_BLANK_TAB" }
+  | { type: "SELECT_TAB"; payload: number }
+  | { type: "CLOSE_TAB"; payload: number }
+  | { type: "SET_REQUEST_FIELDS"; payload: Partial<State> }
   | { type: "SET_LOADING"; payload: boolean }
   | { type: "SET_ERROR"; payload: string | null }
-  | { type: "SET_SHOW_SAVE_MODAL"; payload: boolean };
+  | { type: "SET_RESPONSE"; payload: any }
+  | { type: "SET_CURRENT_REQUEST_ID"; payload: number | null }
+  | { type: "SET_SHOW_SAVE_MODAL"; payload: boolean }
+  | {
+      type: "UPDATE_TAB_AFTER_SEND";
+      payload: { requestId: number; response: any };
+    };
 
 const initialState: State = {
+  tabs: [],
+  activeIndex: -1,
   method: "GET",
   url: "",
   queryParams: {},
@@ -61,67 +94,222 @@ const initialState: State = {
   showSaveModal: false,
 };
 
-function reducer(state: State, action: Action): State {
+const reducer = (state: State, action: Action): State => {
   switch (action.type) {
-    case "LOAD_REQUEST":
-      const responseData =
-        action.payload.response_status && action.payload.response_body
-          ? {
-              statusCode: action.payload.response_status,
-              headers: action.payload.response_headers || {},
-              body: action.payload.response_body,
-              responseTime: action.payload.response_time || 0,
-              responseSize: new Blob([action.payload.response_body]).size,
-            }
-          : null;
-
+    case "OPEN_REQUEST": {
+      const request = action.payload;
+      // Check if already open
+      const existingIndex = state.tabs.findIndex(
+        (t) => t.requestId === request.id,
+      );
+      if (existingIndex >= 0) {
+        // Switch to it
+        const tab = state.tabs[existingIndex];
+        const req = tab.requestData;
+        return {
+          ...state,
+          activeIndex: existingIndex,
+          method: req.method,
+          url: req.url,
+          queryParams: req.query_params || {},
+          headers: req.headers || {},
+          auth: req.auth || null,
+          body: req.body || "",
+          bodyType: req.body_type || "none",
+          currentRequestId: req.id,
+          response: buildResponseDisplay(req),
+          error: null,
+        };
+      }
+      // Create new tab
+      const newTab: Tab = {
+        id: generateTabId(),
+        requestId: request.id,
+        method: request.method,
+        url: request.url,
+        name: request.name || undefined,
+        requestData: request,
+      };
+      const newTabs = [...state.tabs, newTab];
+      const newIndex = newTabs.length - 1;
+      const req = request;
       return {
         ...state,
-        method: action.payload.method,
-        url: action.payload.url,
-        queryParams: action.payload.query_params || {},
-        headers: action.payload.headers || {},
-        auth: action.payload.auth || null,
-        body: action.payload.body || "",
-        bodyType: action.payload.body_type || "none",
-        currentRequestId: action.payload.id,
-        response: responseData, // either the response object or null
+        tabs: newTabs,
+        activeIndex: newIndex,
+        method: req.method,
+        url: req.url,
+        queryParams: req.query_params || {},
+        headers: req.headers || {},
+        auth: req.auth || null,
+        body: req.body || "",
+        bodyType: req.body_type || "none",
+        currentRequestId: req.id,
+        response: buildResponseDisplay(req),
         error: null,
       };
-    case "SET_METHOD":
-      return { ...state, method: action.payload };
-    case "SET_URL":
-      return { ...state, url: action.payload };
-    case "SET_QUERY_PARAMS":
-      return { ...state, queryParams: action.payload };
-    case "SET_HEADERS":
-      return { ...state, headers: action.payload };
-    case "SET_AUTH":
-      return { ...state, auth: action.payload };
-    case "SET_BODY":
-      return { ...state, body: action.payload };
-    case "SET_BODY_TYPE":
-      return { ...state, bodyType: action.payload };
-    case "SET_CURRENT_REQUEST_ID":
-      return { ...state, currentRequestId: action.payload };
-    case "SET_RESPONSE":
-      return { ...state, response: action.payload };
+    }
+    case "OPEN_BLANK_TAB": {
+      const blankRequest: RequestOut = {
+        id: -1,
+        collection_id: null,
+        state: "DRAFT",
+        method: "GET",
+        url: "",
+        query_params: {},
+        headers: {},
+        auth: null,
+        body: "",
+        body_type: "none",
+        response_status: null,
+        response_headers: null,
+        response_body: null,
+        response_time: null,
+        created_at: new Date().toISOString(),
+        executed_at: null,
+      };
+      const newTab: Tab = {
+        id: generateTabId(),
+        requestId: -1,
+        method: "GET",
+        url: "",
+        name: "Untitled",
+        requestData: blankRequest,
+      };
+      const newTabs = [...state.tabs, newTab];
+      const newIndex = newTabs.length - 1;
+      return {
+        ...state,
+        tabs: newTabs,
+        activeIndex: newIndex,
+        method: "GET",
+        url: "",
+        queryParams: {},
+        headers: {},
+        auth: null,
+        body: "",
+        bodyType: "none",
+        currentRequestId: null,
+        response: null,
+        error: null,
+      };
+    }
+    case "SELECT_TAB": {
+      const index = action.payload;
+      if (index === state.activeIndex) return state;
+      const tab = state.tabs[index];
+      if (!tab) return state;
+      const req = tab.requestData;
+      return {
+        ...state,
+        activeIndex: index,
+        method: req.method,
+        url: req.url,
+        queryParams: req.query_params || {},
+        headers: req.headers || {},
+        auth: req.auth || null,
+        body: req.body || "",
+        bodyType: req.body_type || "none",
+        currentRequestId: req.id,
+        response: buildResponseDisplay(req),
+        error: null,
+      };
+    }
+    case "CLOSE_TAB": {
+      const index = action.payload;
+      const newTabs = state.tabs.filter((_, i) => i !== index);
+      if (newTabs.length === 0) {
+        return {
+          ...initialState,
+          tabs: [],
+          activeIndex: -1,
+        };
+      }
+      let newActiveIndex = state.activeIndex;
+      if (index === state.activeIndex) {
+        newActiveIndex = Math.min(index, newTabs.length - 1);
+      } else if (index < state.activeIndex) {
+        newActiveIndex = state.activeIndex - 1;
+      }
+      const tab = newTabs[newActiveIndex];
+      const req = tab.requestData;
+      return {
+        ...state,
+        tabs: newTabs,
+        activeIndex: newActiveIndex,
+        method: req.method,
+        url: req.url,
+        queryParams: req.query_params || {},
+        headers: req.headers || {},
+        auth: req.auth || null,
+        body: req.body || "",
+        bodyType: req.body_type || "none",
+        currentRequestId: req.id,
+        response: buildResponseDisplay(req),
+        error: null,
+      };
+    }
+    case "SET_REQUEST_FIELDS":
+      return { ...state, ...action.payload };
     case "SET_LOADING":
       return { ...state, loading: action.payload };
     case "SET_ERROR":
       return { ...state, error: action.payload };
+    case "SET_RESPONSE":
+      return { ...state, response: action.payload };
+    case "SET_CURRENT_REQUEST_ID":
+      return { ...state, currentRequestId: action.payload };
     case "SET_SHOW_SAVE_MODAL":
       return { ...state, showSaveModal: action.payload };
+    case "UPDATE_TAB_AFTER_SEND": {
+      const { requestId, response } = action.payload;
+      const index = state.tabs.findIndex(
+        (t) => t.requestId === state.currentRequestId,
+      );
+      if (index === -1) return state;
+      const oldTab = state.tabs[index];
+      const updatedRequest: RequestOut = {
+        ...oldTab.requestData,
+        id: requestId,
+        response_status: response.statusCode,
+        response_headers: response.headers,
+        response_body: response.body,
+        response_time: response.responseTime,
+        executed_at: new Date().toISOString(),
+        state: "EXECUTED",
+      };
+      const updatedTab: Tab = {
+        ...oldTab,
+        requestId: requestId,
+        requestData: updatedRequest,
+      };
+      const newTabs = [...state.tabs];
+      newTabs[index] = updatedTab;
+      return {
+        ...state,
+        tabs: newTabs,
+        currentRequestId: requestId,
+        response: {
+          statusCode: response.statusCode,
+          headers: response.headers,
+          body: response.body,
+          responseTime: response.responseTime,
+          responseSize: response.responseSize,
+        },
+      };
+    }
     default:
       return state;
   }
-}
+};
 
 export default function RequestBuilder({
   initialRequest,
 }: RequestBuilderProps) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const {
+    tabs,
+    activeIndex,
     method,
     url,
     queryParams,
@@ -136,13 +324,14 @@ export default function RequestBuilder({
     showSaveModal,
   } = state;
 
-  // Load request from sidebar
+  // ---- Handle initial request from sidebar ----
   useEffect(() => {
     if (initialRequest) {
-      dispatch({ type: "LOAD_REQUEST", payload: initialRequest });
+      dispatch({ type: "OPEN_REQUEST", payload: initialRequest });
     }
   }, [initialRequest]);
 
+  // ---- Handlers ----
   const handleSend = async () => {
     const payload: SendRequestPayload = {
       method,
@@ -160,8 +349,8 @@ export default function RequestBuilder({
       dispatch({ type: "SET_RESPONSE", payload: result });
       if (result.request_id) {
         dispatch({
-          type: "SET_CURRENT_REQUEST_ID",
-          payload: result.request_id,
+          type: "UPDATE_TAB_AFTER_SEND",
+          payload: { requestId: result.request_id, response: result },
         });
       }
     } catch (err: any) {
@@ -173,7 +362,7 @@ export default function RequestBuilder({
   };
 
   const handleSaveClick = () => {
-    if (!currentRequestId) {
+    if (!currentRequestId || currentRequestId === -1) {
       alert("Send the request first or load an existing request to save.");
       return;
     }
@@ -182,29 +371,65 @@ export default function RequestBuilder({
 
   const handleSaveSuccess = () => {
     alert("Request saved to collection!");
-    // Optionally refresh sidebar
   };
+
+  const activeTabId = activeIndex >= 0 ? tabs[activeIndex]?.id : null;
+  const tabsBarData = tabs.map((tab) => ({
+    id: tab.id,
+    method: tab.method,
+    url: tab.url,
+    name: tab.name,
+  }));
 
   return (
     <div className="flex flex-col h-full bg-black text-white">
+      <div className="flex items-center border-b border-gray-800 bg-black shrink-0">
+        <RequestTabsBar
+          tabs={tabsBarData}
+          activeTabId={activeTabId}
+          onSelectTab={(id) => {
+            const index = tabs.findIndex((t) => t.id === id);
+            if (index >= 0) dispatch({ type: "SELECT_TAB", payload: index });
+          }}
+          onCloseTab={(id) => {
+            const index = tabs.findIndex((t) => t.id === id);
+            if (index >= 0) dispatch({ type: "CLOSE_TAB", payload: index });
+          }}
+        />
+        <button
+          onClick={() => dispatch({ type: "OPEN_BLANK_TAB" })}
+          className="px-2 py-1 text-gray-400 hover:text-white hover:bg-gray-800 rounded"
+        >
+          <Plus className="w-4 h-4" />
+        </button>
+      </div>
+
       <RequestHeader
         method={method}
-        setMethod={(m) => dispatch({ type: "SET_METHOD", payload: m })}
+        setMethod={(m) =>
+          dispatch({ type: "SET_REQUEST_FIELDS", payload: { method: m } })
+        }
         url={url}
-        setUrl={(u) => dispatch({ type: "SET_URL", payload: u })}
+        setUrl={(u) =>
+          dispatch({ type: "SET_REQUEST_FIELDS", payload: { url: u } })
+        }
         onSend={handleSend}
         onSave={handleSaveClick}
         loading={loading}
       />
       <RequestTabs activeTab="body" setActiveTab={() => {}}>
         <div className="flex-1 p-4 overflow-auto bg-black">
-          {/** For now we only have body tab, but we can extend later */}
           <BodyEditor
             body={body}
-            setBody={(b) => dispatch({ type: "SET_BODY", payload: b })}
+            setBody={(b) =>
+              dispatch({ type: "SET_REQUEST_FIELDS", payload: { body: b } })
+            }
             bodyType={bodyType}
             setBodyType={(bt) =>
-              dispatch({ type: "SET_BODY_TYPE", payload: bt })
+              dispatch({
+                type: "SET_REQUEST_FIELDS",
+                payload: { bodyType: bt },
+              })
             }
           />
         </div>

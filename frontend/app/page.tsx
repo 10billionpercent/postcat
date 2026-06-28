@@ -11,19 +11,15 @@ export default function Home() {
     null,
   );
   const [currentRequest, setCurrentRequest] = useState<RequestOut | null>(null);
-  const [loading, setLoading] = useState(false);
 
   const handleSelectRequest = async (id: number) => {
     setSelectedRequestId(id);
-    setLoading(true);
     try {
       const data = await getRequest(id);
       setCurrentRequest(data);
     } catch (err) {
       console.error("Failed to load request", err);
       setCurrentRequest(null);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -36,13 +32,7 @@ export default function Home() {
           selectedRequestId={selectedRequestId}
         />
         <div className="flex-1 overflow-hidden">
-          {loading ? (
-            <div className="flex items-center justify-center h-full text-gray-500">
-              Loading request...
-            </div>
-          ) : (
-            <RequestBuilder initialRequest={currentRequest} />
-          )}
+          <RequestBuilder initialRequest={currentRequest} />
         </div>
       </div>
     </div>
