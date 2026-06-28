@@ -339,12 +339,10 @@ export default function Sidebar({ onSelectRequest, selectedRequestId }: Props) {
   };
 
   const handleCreateCollection = async () => {
-    const name = prompt("Enter collection name:");
-    if (!name || name.trim() === "") return;
-
+    const name = "New Collection";
     collectionsDispatch({ type: "CREATE_START" });
     try {
-      const newCollection = await createCollection(name.trim());
+      const newCollection = await createCollection(name);
       const newExpanded = new Set([...expanded, newCollection.id]);
       collectionsDispatch({
         type: "CREATE_SUCCESS",
