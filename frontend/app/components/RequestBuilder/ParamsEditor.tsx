@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, X } from "lucide-react";
+import { Trash2 } from "lucide-react";
 
 interface ParamsEditorProps {
   params: Record<string, string>;
@@ -13,23 +13,67 @@ export default function ParamsEditor({ params, onChange }: ParamsEditorProps) {
   const [bulkText, setBulkText] = useState("");
 
   const entries = Object.entries(params);
-
-  const addRow = () => {
-    onChange({ ...params, "": "" });
-  };
+  const displayEntries = entries.length === 0 ? [["", ""]] : entries;
 
   const updateRow = (oldKey: string, newKey: string, value: string) => {
     const newParams = { ...params };
-    delete newParams[oldKey];
-    if (newKey.trim()) {
+
+    // Remove old key if it exists and is different from newKey
+    if (oldKey !== newKey && oldKey in newParams) {
+      delete newParams[oldKey];
+    }
+
+    // If newKey is empty, delete the entry
+    if (newKey.trim() === "") {
+      delete newParams[oldKey];
+    } else {
       newParams[newKey.trim()] = value;
     }
+
+    // Remove any leftover empty key (always strip it first)
+    delete newParams[""];
+
+    const isRowFilled = newKey.trim() !== "" && value.trim() !== "";
+    const wasEmptyRow = oldKey === "";
+
+    // If the user was editing the empty row and it's NOT yet filled, don't add a new empty row.
+    if (wasEmptyRow && !isRowFilled) {
+      // Do nothing – the empty row is being edited, so we keep it gone.
+    } else {
+      // Otherwise, ensure there's exactly one empty row if there is at least one filled row.
+      const hasFilledRow = Object.entries(newParams).some(
+        ([k, v]) => k.trim() !== "" && v.trim() !== "",
+      );
+      // Only add an empty row if there is at least one filled row
+      if (hasFilledRow) {
+        newParams[""] = "";
+      }
+    }
+
+    // If there are no filled rows and no empty row, add one empty row.
+    const hasFilledRowAfter = Object.entries(newParams).some(
+      ([k, v]) => k.trim() !== "" && v.trim() !== "",
+    );
+    const hasEmptyKeyAfter = Object.keys(newParams).some((k) => k === "");
+    if (!hasFilledRowAfter && !hasEmptyKeyAfter) {
+      newParams[""] = "";
+    }
+
     onChange(newParams);
   };
 
   const deleteRow = (key: string) => {
     const newParams = { ...params };
     delete newParams[key];
+    delete newParams[""];
+    const hasFilledRow = Object.entries(newParams).some(
+      ([k, v]) => k.trim() !== "" && v.trim() !== "",
+    );
+    if (hasFilledRow) {
+      newParams[""] = "";
+    } else {
+      newParams[""] = "";
+    }
     onChange(newParams);
   };
 
@@ -42,7 +86,16 @@ export default function ParamsEditor({ params, onChange }: ParamsEditorProps) {
         newParams[key.trim()] = rest.join("=").trim();
       }
     }
-    onChange({ ...params, ...newParams });
+    // Merge with existing
+    const merged = { ...params, ...newParams };
+    delete merged[""];
+    const hasFilledRow = Object.entries(merged).some(
+      ([k, v]) => k.trim() !== "" && v.trim() !== "",
+    );
+    if (hasFilledRow) {
+      merged[""] = "";
+    }
+    onChange(merged);
     setBulkText("");
     setBulkMode(false);
   };
@@ -51,20 +104,12 @@ export default function ParamsEditor({ params, onChange }: ParamsEditorProps) {
     <div className="text-white">
       <div className="flex justify-between items-center mb-2">
         <span className="text-sm font-medium text-gray-400">Query Params</span>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setBulkMode(!bulkMode)}
-            className="text-xs text-blue-400 hover:underline"
-          >
-            {bulkMode ? "Cancel" : "Bulk Edit"}
-          </button>
-          <button
-            onClick={addRow}
-            className="text-xs text-blue-400 hover:underline flex items-center gap-1"
-          >
-            <Plus className="w-3 h-3" /> Add
-          </button>
-        </div>
+        <button
+          onClick={() => setBulkMode(!bulkMode)}
+          className="text-xs text-blue-400 hover:underline"
+        >
+          {bulkMode ? "Cancel" : "Bulk Edit"}
+        </button>
       </div>
 
       {bulkMode ? (
@@ -91,14 +136,11 @@ export default function ParamsEditor({ params, onChange }: ParamsEditorProps) {
             <div className="col-span-5 px-2 py-1">Value</div>
             <div className="col-span-2 px-2 py-1 text-right">Actions</div>
           </div>
-          {entries.length === 0 ? (
-            <div className="text-sm text-gray-500 p-4 text-center">
-              No query parameters
-            </div>
-          ) : (
-            entries.map(([key, value]) => (
+          {displayEntries.map(([key, value], index) => {
+            const isFilled = key.trim() !== "" && value.trim() !== "";
+            return (
               <div
-                key={key}
+                key={index}
                 className="grid grid-cols-12 border-b border-gray-800 last:border-0"
               >
                 <div className="col-span-5 px-2 py-1">
@@ -120,16 +162,18 @@ export default function ParamsEditor({ params, onChange }: ParamsEditorProps) {
                   />
                 </div>
                 <div className="col-span-2 px-2 py-1 flex justify-end">
-                  <button
-                    onClick={() => deleteRow(key)}
-                    className="text-gray-500 hover:text-red-400"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
+                  {isFilled && (
+                    <button
+                      onClick={() => deleteRow(key)}
+                      className="text-gray-500 hover:text-red-400"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
               </div>
-            ))
-          )}
+            );
+          })}
         </div>
       )}
     </div>

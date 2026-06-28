@@ -343,7 +343,16 @@ export default function RequestBuilder({
 
   // Build the full URL with query params
   const buildFullUrl = (base: string, params: Record<string, string>) => {
-    const queryString = new URLSearchParams(params).toString();
+    // Filter out keys or values that are empty (trimmed)
+    const filteredParams: Record<string, string> = {};
+    for (const [key, value] of Object.entries(params)) {
+      const trimmedKey = key.trim();
+      const trimmedValue = value.trim();
+      if (trimmedKey !== "" && trimmedValue !== "") {
+        filteredParams[trimmedKey] = trimmedValue;
+      }
+    }
+    const queryString = new URLSearchParams(filteredParams).toString();
     if (!queryString) return base;
     const connector = base.includes("?") ? "&" : "?";
     return `${base}${connector}${queryString}`;
