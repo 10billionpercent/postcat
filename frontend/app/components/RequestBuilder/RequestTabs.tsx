@@ -12,7 +12,6 @@ const tabs = [
   { id: "pre-script", label: "Pre-request Script" },
   { id: "tests", label: "Tests" },
   { id: "settings", label: "Settings" },
-  { id: "cookies", label: "Cookies" },
 ];
 
 export default function RequestTabs({

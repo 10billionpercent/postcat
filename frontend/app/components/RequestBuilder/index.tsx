@@ -6,6 +6,7 @@ import RequestTabs from "./RequestTabs";
 import ResponsePanel from "./ResponsePanel";
 import BodyEditor from "./BodyEditor";
 import ParamsEditor from "./ParamsEditor";
+import AuthEditor from "./AuthEditor";
 import SaveModal from "./SaveModal";
 import RequestTabsBar from "./RequestTabsBar";
 import { Plus } from "lucide-react";
@@ -483,11 +484,6 @@ export default function RequestBuilder({
         }
       >
         <div className="flex-1 p-4 overflow-auto bg-black relative">
-          {isLoading && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10">
-              <div className="text-gray-400">Loading request...</div>
-            </div>
-          )}
           {activeTab === "params" && (
             <ParamsEditor
               params={queryParams}
@@ -500,9 +496,15 @@ export default function RequestBuilder({
             />
           )}
           {activeTab === "auth" && (
-            <div className="text-gray-400">
-              Authorization editor (coming soon)
-            </div>
+            <AuthEditor
+              auth={auth}
+              onChange={(newAuth) =>
+                dispatch({
+                  type: "SET_REQUEST_FIELDS",
+                  payload: { auth: newAuth },
+                })
+              }
+            />
           )}
           {activeTab === "headers" && (
             <div className="text-gray-400">Headers editor (coming soon)</div>

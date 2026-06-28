@@ -106,6 +106,19 @@ async def execute_request(config: RequestConfig) -> tuple[int, dict, str, float]
         else:
             data = body
 
+    # --- Handle auth manually ---
+    auth = config.auth
+    if auth:
+        if auth.get('type') == 'basic':
+            username = auth.get('username', '')
+            password = auth.get('password', '')
+            credentials = f"{username}:{password}".encode('utf-8')
+            import base64
+            headers['Authorization'] = f"Basic {base64.b64encode(credentials).decode('utf-8')}"
+        elif auth.get('type') == 'bearer':
+            token = auth.get('token', '')
+            headers['Authorization'] = f"Bearer {token}"
+
     async with httpx.AsyncClient(timeout=30.0) as client:
         start = time.perf_counter()
         response = await client.request(
@@ -113,6 +126,7 @@ async def execute_request(config: RequestConfig) -> tuple[int, dict, str, float]
             url=url,
             params=params,
             headers=headers,
+            # auth parameter removed – we send the header manually
             content=body if body_type not in ("json", "form") else None,
             json=json_data,
             data=data if body_type == "form" else None,
