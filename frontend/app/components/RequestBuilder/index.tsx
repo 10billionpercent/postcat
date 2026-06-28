@@ -16,6 +16,8 @@ import {
 
 interface RequestBuilderProps {
   initialRequest?: RequestOut | null;
+  environmentId?: number;
+  loading?: boolean;
 }
 
 interface Tab {
@@ -305,6 +307,7 @@ const reducer = (state: State, action: Action): State => {
 
 export default function RequestBuilder({
   initialRequest,
+  environmentId,
 }: RequestBuilderProps) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const {
@@ -339,6 +342,7 @@ export default function RequestBuilder({
       query_params: queryParams,
       headers,
       auth,
+      environment_id: environmentId,
       ...(bodyType !== "none" && { body, body_type: bodyType }),
     };
 

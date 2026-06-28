@@ -114,3 +114,57 @@ export async function saveRequest(payload: SaveRequestPayload): Promise<any> {
   if (!res.ok) throw new Error("Failed to save request");
   return res.json();
 }
+
+export async function getHistory(): Promise<RequestOut[]> {
+  const res = await fetch(`${API_BASE}/requests?state=EXECUTED`);
+  if (!res.ok) throw new Error("Failed to fetch history");
+  return res.json();
+}
+
+export interface Environment {
+  id: number;
+  name: string;
+}
+
+export interface Variable {
+  id: number;
+  environment_id: number;
+  key: string;
+  value: string;
+}
+
+export async function getEnvironments(): Promise<Environment[]> {
+  const res = await fetch(`${API_BASE}/environments`);
+  if (!res.ok) throw new Error("Failed to fetch environments");
+  return res.json();
+}
+
+export async function createEnvironment(name: string): Promise<Environment> {
+  const res = await fetch(`${API_BASE}/environments`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) throw new Error("Failed to create environment");
+  return res.json();
+}
+
+export async function createVariable(
+  envId: number,
+  key: string,
+  value: string,
+): Promise<Variable> {
+  const res = await fetch(`${API_BASE}/environments/${envId}/variables`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key, value }),
+  });
+  if (!res.ok) throw new Error("Failed to create variable");
+  return res.json();
+}
+
+export async function getVariables(envId: number): Promise<Variable[]> {
+  const res = await fetch(`${API_BASE}/environments/${envId}/variables`);
+  if (!res.ok) throw new Error("Failed to fetch variables");
+  return res.json();
+}
