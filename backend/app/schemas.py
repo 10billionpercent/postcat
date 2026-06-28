@@ -46,6 +46,7 @@ class CollectionOut(BaseModel):
     id: int
     name: str
     created_at: datetime
+    share_token: Optional[str] = None
 
 # ---- Request out (for history / collection) ----
 class RequestOut(BaseModel):
@@ -79,3 +80,34 @@ class CollectionInfo(BaseModel):
 class SaveResponse(BaseModel):
     request: RequestOut
     collection: CollectionInfo
+
+
+class CollectionShareResponse(BaseModel):
+    collection: CollectionOut
+    requests: List[RequestOut]
+
+# ---- Environment ----
+class EnvironmentCreate(BaseModel):
+    name: str
+
+class EnvironmentUpdate(BaseModel):
+    name: str
+
+class EnvironmentOut(BaseModel):
+    id: int
+    name: str
+
+# ---- Environment Variables ----
+class VariableCreate(BaseModel):
+    key: str
+    value: str
+
+class VariableUpdate(BaseModel):
+    key: Optional[str] = None
+    value: Optional[str] = None
+
+class VariableOut(BaseModel):
+    id: int
+    environment_id: int
+    key: str
+    value: str

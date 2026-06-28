@@ -1,17 +1,18 @@
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from .database import init_db
-from .routes import router
+from .routers import requests, collections, environments
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: create tables
     await init_db()
     yield
-    # Shutdown: nothing needed
 
 app = FastAPI(lifespan=lifespan)
-app.include_router(router)
+
+app.include_router(requests.router)
+app.include_router(collections.router)
+app.include_router(environments.router)
 
 @app.get("/")
 async def root():
