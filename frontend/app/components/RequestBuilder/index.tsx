@@ -129,7 +129,7 @@ const reducer = (state: State, action: Action): State => {
         requestId: request.id,
         method: request.method,
         url: request.url,
-        name: request.name || undefined,
+        // name: request.name || undefined,
         requestData: request,
       };
       const newTabs = [...state.tabs, newTab];
