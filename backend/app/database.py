@@ -3,8 +3,10 @@ import aiosqlite
 import httpx
 from typing import List, Dict, Any, Optional
 
+# Load environment
 ENVIRONMENT = os.getenv("ENVIRONMENT", "local")
 
+# D1 credentials (only used in production)
 CLOUDFLARE_ACCOUNT_ID = os.getenv("CLOUDFLARE_ACCOUNT_ID")
 CLOUDFLARE_API_TOKEN = os.getenv("CLOUDFLARE_API_TOKEN")
 D1_DATABASE_ID = os.getenv("D1_DATABASE_ID")
@@ -27,22 +29,37 @@ class D1Connection:
     async def execute(self, sql: str, params: Optional[List] = None):
         if self._closed:
             raise RuntimeError("Connection closed")
+
         headers = {
             "Authorization": f"Bearer {CLOUDFLARE_API_TOKEN}",
             "Content-Type": "application/json",
         }
         payload = {"sql": sql, "params": params or []}
+
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(D1_API_URL, headers=headers, json=payload)
             if resp.status_code != 200:
                 raise Exception(f"D1 API error: {resp.text}")
+
             data = resp.json()
             if not data.get("success"):
                 raise Exception(f"D1 API error: {data.get('errors')}")
-            result = data.get("result", {})
-            self._results = result.get("results", [])
-            self._lastrowid = result.get("meta", {}).get("last_row_id")
-            self._rowcount = result.get("meta", {}).get("changes", 0)
+
+            # D1 returns "result" as an array of result objects
+            result_list = data.get("result", [])
+
+            if not result_list:
+                self._results = []
+                self._lastrowid = None
+                self._rowcount = 0
+                return self
+
+            # Take the first result (for single statements)
+            first_result = result_list[0]
+            self._results = first_result.get("results", [])
+            self._lastrowid = first_result.get("meta", {}).get("last_row_id")
+            self._rowcount = first_result.get("meta", {}).get("changes", 0)
+
             return self
 
     async def executemany(self, sql: str, params_list: List[List]):
@@ -65,7 +82,7 @@ class D1Connection:
         return [Row(row) for row in self._results] if self._results else []
 
     async def commit(self):
-        pass
+        pass  # D1 auto-commits
 
     async def close(self):
         self._closed = True
@@ -81,16 +98,21 @@ class D1Connection:
 class Row:
     def __init__(self, data: Dict[str, Any]):
         self._data = data
+
     def __getitem__(self, key):
         return self._data[key]
+
     def __getattr__(self, name):
         if name in self._data:
             return self._data[name]
         raise AttributeError(f"No column named {name}")
+
     def keys(self):
         return self._data.keys()
+
     def values(self):
         return self._data.values()
+
     def items(self):
         return self._data.items()
 
@@ -101,7 +123,7 @@ async def get_d1_db():
     finally:
         await conn.close()
 
-# ---- Unified DB dependency (for FastAPI) ----
+# ---- Unified DB dependency ----
 async def get_db():
     if ENVIRONMENT == "production" and CLOUDFLARE_API_TOKEN:
         async for conn in get_d1_db():
@@ -110,7 +132,7 @@ async def get_db():
         async for conn in get_local_db():
             yield conn
 
-# ---- Init DB (no dependency on get_db to avoid context manager issues) ----
+# ---- Init DB ----
 async def init_db():
     schema = """
         CREATE TABLE IF NOT EXISTS collections (
