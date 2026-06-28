@@ -5,6 +5,7 @@ import RequestHeader from "./RequestHeader";
 import RequestTabs from "./RequestTabs";
 import ResponsePanel from "./ResponsePanel";
 import BodyEditor from "./BodyEditor";
+import ParamsEditor from "./ParamsEditor";
 import SaveModal from "./SaveModal";
 import RequestTabsBar from "./RequestTabsBar";
 import { Plus } from "lucide-react";
@@ -49,6 +50,7 @@ const buildResponseDisplay = (request: RequestOut) => {
 type State = {
   tabs: Tab[];
   activeIndex: number;
+  activeTab: string; // 'params', 'auth', 'headers', 'body', etc.
   method: string;
   url: string;
   queryParams: Record<string, string>;
@@ -68,6 +70,7 @@ type Action =
   | { type: "OPEN_BLANK_TAB" }
   | { type: "SELECT_TAB"; payload: number }
   | { type: "CLOSE_TAB"; payload: number }
+  | { type: "SET_ACTIVE_TAB"; payload: string }
   | { type: "SET_REQUEST_FIELDS"; payload: Partial<State> }
   | { type: "SET_LOADING"; payload: boolean }
   | { type: "SET_ERROR"; payload: string | null }
@@ -82,6 +85,7 @@ type Action =
 const initialState: State = {
   tabs: [],
   activeIndex: -1,
+  activeTab: "params",
   method: "GET",
   url: "",
   queryParams: {},
@@ -100,12 +104,10 @@ const reducer = (state: State, action: Action): State => {
   switch (action.type) {
     case "OPEN_REQUEST": {
       const request = action.payload;
-      // Check if already open
       const existingIndex = state.tabs.findIndex(
         (t) => t.requestId === request.id,
       );
       if (existingIndex >= 0) {
-        // Switch to it
         const tab = state.tabs[existingIndex];
         const req = tab.requestData;
         return {
@@ -123,13 +125,11 @@ const reducer = (state: State, action: Action): State => {
           error: null,
         };
       }
-      // Create new tab
       const newTab: Tab = {
         id: generateTabId(),
         requestId: request.id,
         method: request.method,
         url: request.url,
-        // name: request.name || undefined,
         requestData: request,
       };
       const newTabs = [...state.tabs, newTab];
@@ -251,6 +251,8 @@ const reducer = (state: State, action: Action): State => {
         error: null,
       };
     }
+    case "SET_ACTIVE_TAB":
+      return { ...state, activeTab: action.payload };
     case "SET_REQUEST_FIELDS":
       return { ...state, ...action.payload };
     case "SET_LOADING":
@@ -308,11 +310,13 @@ const reducer = (state: State, action: Action): State => {
 export default function RequestBuilder({
   initialRequest,
   environmentId,
+  loading: externalLoading,
 }: RequestBuilderProps) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const {
     tabs,
     activeIndex,
+    activeTab,
     method,
     url,
     queryParams,
@@ -322,7 +326,7 @@ export default function RequestBuilder({
     bodyType,
     currentRequestId,
     response,
-    loading,
+    loading: internalLoading,
     error,
     showSaveModal,
   } = state;
@@ -333,6 +337,54 @@ export default function RequestBuilder({
       dispatch({ type: "OPEN_REQUEST", payload: initialRequest });
     }
   }, [initialRequest]);
+
+  // Inside RequestBuilder component, after state declarations:
+
+  // Build the full URL with query params
+  const buildFullUrl = (base: string, params: Record<string, string>) => {
+    const queryString = new URLSearchParams(params).toString();
+    if (!queryString) return base;
+    const connector = base.includes("?") ? "&" : "?";
+    return `${base}${connector}${queryString}`;
+  };
+
+  const fullUrl = buildFullUrl(url, queryParams);
+
+  // Handler to parse a full URL and update both url and queryParams
+  const handleUrlChange = (input: string) => {
+    try {
+      // Try to parse as URL (if it has protocol)
+      const parsed = new URL(input);
+      const base = parsed.origin + parsed.pathname;
+      const params: Record<string, string> = {};
+      parsed.searchParams.forEach((value, key) => {
+        params[key] = value;
+      });
+      dispatch({
+        type: "SET_REQUEST_FIELDS",
+        payload: { url: base, queryParams: params },
+      });
+    } catch {
+      // If parsing fails, just set the url as the raw input (no query params)
+      // We could also try to split on '?' manually
+      const [base, query] = input.split("?");
+      if (query) {
+        const params: Record<string, string> = {};
+        new URLSearchParams(query).forEach((value, key) => {
+          params[key] = value;
+        });
+        dispatch({
+          type: "SET_REQUEST_FIELDS",
+          payload: { url: base, queryParams: params },
+        });
+      } else {
+        dispatch({
+          type: "SET_REQUEST_FIELDS",
+          payload: { url: input, queryParams: {} },
+        });
+      }
+    }
+  };
 
   // ---- Handlers ----
   const handleSend = async () => {
@@ -385,6 +437,9 @@ export default function RequestBuilder({
     name: tab.name,
   }));
 
+  // Combine internal and external loading
+  const isLoading = internalLoading || externalLoading || false;
+
   return (
     <div className="flex flex-col h-full bg-black text-white">
       <div className="flex items-center border-b border-gray-800 bg-black shrink-0">
@@ -413,37 +468,69 @@ export default function RequestBuilder({
         setMethod={(m) =>
           dispatch({ type: "SET_REQUEST_FIELDS", payload: { method: m } })
         }
-        url={url}
-        setUrl={(u) =>
-          dispatch({ type: "SET_REQUEST_FIELDS", payload: { url: u } })
-        }
+        url={fullUrl} // <-- display full URL
+        setUrl={handleUrlChange} // <-- parse input
         onSend={handleSend}
         onSave={handleSaveClick}
-        loading={loading}
+        loading={isLoading}
       />
-      <RequestTabs activeTab="body" setActiveTab={() => {}}>
-        <div className="flex-1 p-4 overflow-auto bg-black">
-          <BodyEditor
-            body={body}
-            setBody={(b) =>
-              dispatch({ type: "SET_REQUEST_FIELDS", payload: { body: b } })
-            }
-            bodyType={bodyType}
-            setBodyType={(bt) =>
-              dispatch({
-                type: "SET_REQUEST_FIELDS",
-                payload: { bodyType: bt },
-              })
-            }
-          />
+
+      {/* Tabs: Params, Auth, Headers, Body, etc. */}
+      <RequestTabs
+        activeTab={activeTab}
+        setActiveTab={(tab) =>
+          dispatch({ type: "SET_ACTIVE_TAB", payload: tab })
+        }
+      >
+        <div className="flex-1 p-4 overflow-auto bg-black relative">
+          {isLoading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10">
+              <div className="text-gray-400">Loading request...</div>
+            </div>
+          )}
+          {activeTab === "params" && (
+            <ParamsEditor
+              params={queryParams}
+              onChange={(newParams) =>
+                dispatch({
+                  type: "SET_REQUEST_FIELDS",
+                  payload: { queryParams: newParams },
+                })
+              }
+            />
+          )}
+          {activeTab === "auth" && (
+            <div className="text-gray-400">
+              Authorization editor (coming soon)
+            </div>
+          )}
+          {activeTab === "headers" && (
+            <div className="text-gray-400">Headers editor (coming soon)</div>
+          )}
+          {activeTab === "body" && (
+            <BodyEditor
+              body={body}
+              setBody={(b) =>
+                dispatch({ type: "SET_REQUEST_FIELDS", payload: { body: b } })
+              }
+              bodyType={bodyType}
+              setBodyType={(bt) =>
+                dispatch({
+                  type: "SET_REQUEST_FIELDS",
+                  payload: { bodyType: bt },
+                })
+              }
+            />
+          )}
         </div>
       </RequestTabs>
+
       {error && (
         <div className="border-t border-red-800 p-2 text-red-400 text-sm bg-red-950">
           Error: {error}
         </div>
       )}
-      <ResponsePanel response={response} loading={loading} />
+      <ResponsePanel response={response} loading={isLoading} />
 
       <SaveModal
         isOpen={showSaveModal}
