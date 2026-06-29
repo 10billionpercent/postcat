@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import CodeEditor from "../CodeEditor";
 
 interface Props {
   body: string;
@@ -125,12 +126,12 @@ export default function BodyEditor({
             </div>
             {/* Editor area */}
             <div className="flex-1 flex flex-col min-h-[200px]">
-              <textarea
+              <CodeEditor
                 value={body}
-                onChange={(e) => setBody(e.target.value)}
+                onChange={setBody}
                 placeholder={`Enter ${rawSubType.toLowerCase()} data...`}
-                className="flex-1 bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm font-mono text-gray-200 resize-none focus:outline-none focus:border-blue-500"
-                style={{ minHeight: "200px" }}
+                language={rawSubType.toLowerCase() === "json" ? "json" : "text"}
+                minHeight="200px"
               />
             </div>
           </div>

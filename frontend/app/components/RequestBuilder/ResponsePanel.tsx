@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 
 interface ResponseData {
   statusCode: number;
@@ -16,6 +18,61 @@ interface Props {
 }
 
 type Tab = "body" | "headers" | "cookies";
+
+function renderBody(body: string) {
+  // Try to parse as JSON – if valid, highlight with JSON; otherwise plain text.
+  try {
+    JSON.parse(body);
+    return (
+      <SyntaxHighlighter
+        language="json"
+        style={vscDarkPlus}
+        showLineNumbers={true}
+        wrapLines={true}
+        lineNumberStyle={{
+          color: "#555",
+          minWidth: "2em",
+          paddingRight: "1em",
+        }}
+        customStyle={{
+          margin: 0,
+          background: "transparent",
+          fontSize: "13px",
+          fontFamily: "monospace",
+          padding: "0.5rem",
+          minHeight: "100%",
+        }}
+      >
+        {body}
+      </SyntaxHighlighter>
+    );
+  } catch {
+    // Not JSON – fallback to plain text with line numbers.
+    return (
+      <SyntaxHighlighter
+        language="text"
+        style={vscDarkPlus}
+        showLineNumbers={true}
+        wrapLines={true}
+        lineNumberStyle={{
+          color: "#555",
+          minWidth: "2em",
+          paddingRight: "1em",
+        }}
+        customStyle={{
+          margin: 0,
+          background: "transparent",
+          fontSize: "13px",
+          fontFamily: "monospace",
+          padding: "0.5rem",
+          minHeight: "100%",
+        }}
+      >
+        {body}
+      </SyntaxHighlighter>
+    );
+  }
+}
 
 export default function ResponsePanel({ response, loading }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>("body");
@@ -51,9 +108,9 @@ export default function ResponsePanel({ response, loading }: Props) {
     switch (activeTab) {
       case "body":
         return (
-          <pre className="font-mono text-sm whitespace-pre-wrap text-gray-200">
-            {response.body}
-          </pre>
+          <div className="h-full overflow-auto">
+            {renderBody(response.body)}
+          </div>
         );
       case "headers": {
         const headerEntries = Object.entries(response.headers);
@@ -63,12 +120,12 @@ export default function ResponsePanel({ response, loading }: Props) {
           );
         }
         return (
-          <div className="border border-gray-700 rounded overflow-hidden">
+          <div className="border border-gray-700 rounded overflow-hidden p-2">
             <table className="w-full text-sm">
               <thead className="bg-gray-900 text-gray-400">
                 <tr>
-                  <th className="text-left px-2 py-1 font-medium">Key</th>
-                  <th className="text-left px-2 py-1 font-medium">Value</th>
+                  <th className="text-left text-xs px-2 py-1 font-medium">Key</th>
+                  <th className="text-left text-xs px-2 py-1 font-medium">Value</th>
                 </tr>
               </thead>
               <tbody>
@@ -118,9 +175,7 @@ export default function ResponsePanel({ response, loading }: Props) {
 
   return (
     <div className="border-t border-gray-800 flex flex-col h-48 shrink-0 bg-black">
-      {/* Combined header row: tabs left, status right */}
       <div className="flex items-center justify-between px-4 py-1 bg-gray-900 border-b border-gray-800 min-h-[40px]">
-        {/* Tabs */}
         <div className="flex gap-1">
           {(["body", "headers", "cookies"] as Tab[]).map((tab) => (
             <button
@@ -136,8 +191,6 @@ export default function ResponsePanel({ response, loading }: Props) {
             </button>
           ))}
         </div>
-
-        {/* Status */}
         <div className="flex items-center gap-4 text-sm">
           <span
             className={`font-medium ${response.statusCode < 400 ? "text-green-400" : "text-red-400"}`}
@@ -148,9 +201,7 @@ export default function ResponsePanel({ response, loading }: Props) {
           <span className="text-gray-400">{response.responseSize} B</span>
         </div>
       </div>
-
-      {/* Content */}
-      <div className="flex-1 overflow-auto p-4 bg-black">{renderContent()}</div>
+      <div className="flex-1 overflow-hidden bg-black">{renderContent()}</div>
     </div>
   );
 }
