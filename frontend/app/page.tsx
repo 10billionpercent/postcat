@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import TopBar from "./components/TopBar";
-import Sidebar from "./components/Sidebar";
+import Sidebar, { type SidebarHandle } from "./components/Sidebar";
 import RequestBuilder, {
   type RequestBuilderHandle,
 } from "./components/RequestBuilder";
@@ -17,6 +17,7 @@ export default function Home() {
   const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<
     number | null
   >(null);
+  const sidebarRef = useRef<SidebarHandle>(null);
   const requestBuilderRef = useRef<RequestBuilderHandle>(null);
 
   const handleSelectRequest = async (id: number) => {
@@ -33,8 +34,10 @@ export default function Home() {
     }
   };
 
-  const handleSelectEnvironment = async (id: number) => {
-    requestBuilderRef.current?.openEnvironmentTab(id);
+  const handleRequestSent = () => {
+    if (sidebarRef.current) {
+      sidebarRef.current.refreshHistory();
+    }
   };
 
   const handleOpenEnvironmentTab = () => {
@@ -49,23 +52,23 @@ export default function Home() {
       />
       <div className="flex flex-1 overflow-hidden">
         <Sidebar
+          ref={sidebarRef}
           onSelectRequest={handleSelectRequest}
-          onSelectEnvironment={handleSelectEnvironment}
           selectedRequestId={selectedRequestId}
           onOpenEnvironmentTab={handleOpenEnvironmentTab}
+          onSelectEnvironment={(id) =>
+            requestBuilderRef.current?.openEnvironmentTab(id)
+          }
         />
         <div className="flex-1 overflow-hidden">
-          {loading ? (
-            <div className="flex items-center justify-center h-full text-gray-500">
-              Loading request...
-            </div>
-          ) : (
-            <RequestBuilder
-              ref={requestBuilderRef}
-              initialRequest={currentRequest}
-              environmentId={selectedEnvironmentId || undefined}
-            />
-          )}
+          {/* Always render RequestBuilder – never unmount */}
+          <RequestBuilder
+            ref={requestBuilderRef}
+            initialRequest={currentRequest}
+            onRequestSent={handleRequestSent}
+            environmentId={selectedEnvironmentId || undefined}
+            loading={loading}
+          />
         </div>
       </div>
     </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Trash2, Plus } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import {
   createEnvironment,
   createVariable,
@@ -32,11 +32,9 @@ export default function EnvironmentEditor({
   onCancel,
 }: EnvironmentEditorProps) {
   const [name, setName] = useState(initialName);
-  // Initialize variables, ensuring there is always an empty row for existing envs
   const [variables, setVariables] = useState<VariableItem[]>(() => {
     const initial =
       initialVariables.length > 0 ? initialVariables : [{ key: "", value: "" }];
-    // If editing an existing environment, ensure there is at least one empty row
     if (environmentId !== undefined) {
       const hasEmptyRow = initial.some((v) => v.key === "" && v.value === "");
       if (!hasEmptyRow) {
@@ -59,7 +57,6 @@ export default function EnvironmentEditor({
     }
   }, [isEditingName]);
 
-  // Handle name change (inline edit)
   const handleNameSave = async () => {
     const newName = tempName.trim() || "New Environment";
     if (newName === name) {
@@ -70,14 +67,13 @@ export default function EnvironmentEditor({
     setIsEditingName(false);
   };
 
-  // Remove a variable
   const removeVariable = async (index: number) => {
     const varToRemove = variables[index];
-    if (!varToRemove) return; // safety check
+    if (!varToRemove) return;
 
-    if (varToRemove.id) {
+    if (varToRemove.id && environmentId) {
       try {
-        await deleteVariable(varToRemove.id);
+        await deleteVariable(varToRemove.id, environmentId);
       } catch (err) {
         setError("Failed to delete variable");
         console.error(err);
@@ -85,33 +81,25 @@ export default function EnvironmentEditor({
       }
     }
 
-    // Remove the variable from state
     const newVars = variables.filter((_, i) => i !== index);
-    // Ensure there is at least one row (empty if needed)
-    if (newVars.length === 0) {
-      newVars.push({ key: "", value: "" });
-    }
+    if (newVars.length === 0) newVars.push({ key: "", value: "" });
     setVariables(newVars);
   };
 
-  // Update variable locally, and auto-add empty row when current row becomes filled
-  const updateVariable = (
+  const updateVariableLocal = (
     index: number,
     field: "key" | "value",
     val: string,
   ) => {
-    // Guard: if index is out of bounds, ignore
     if (index < 0 || index >= variables.length) return;
 
     const newVars = [...variables];
     newVars[index][field] = val;
 
-    // Check if the current row is now filled
     const row = newVars[index];
     const isFilled = row.key.trim() !== "" && row.value.trim() !== "";
 
     if (isFilled) {
-      // Check if there is already an empty row at the end
       const lastRow = newVars[newVars.length - 1];
       const hasEmptyRow = lastRow.key === "" && lastRow.value === "";
       if (!hasEmptyRow) {
@@ -122,7 +110,6 @@ export default function EnvironmentEditor({
     setVariables(newVars);
   };
 
-  // Save all changes (name + variables)
   const handleSaveAll = async () => {
     if (!name.trim()) {
       setError("Environment name is required");
@@ -134,7 +121,6 @@ export default function EnvironmentEditor({
     try {
       let envId = environmentId;
 
-      // 1. Create or update environment
       if (!envId) {
         const env = await createEnvironment(name.trim());
         envId = env.id;
@@ -142,18 +128,17 @@ export default function EnvironmentEditor({
         await updateEnvironment(envId, name.trim());
       }
 
-      // 2. Save all variables (create/update)
+      // Save variables (create/update)
       for (const v of variables) {
         if (v.key.trim() && v.value.trim()) {
-          if (v.id) {
-            await updateVariable(v.id, v.key.trim(), v.value.trim());
-          } else {
-            await createVariable(envId!, v.key.trim(), v.value.trim());
+          if (v.id && envId) {
+            await updateVariable(v.id, envId, v.key.trim(), v.value.trim());
+          } else if (envId) {
+            await createVariable(envId, v.key.trim(), v.value.trim());
           }
         }
       }
 
-      // 3. Call parent to refresh sidebar and close tab
       onSave(envId!, name.trim());
     } catch (err) {
       setError("Failed to save environment");
@@ -165,7 +150,6 @@ export default function EnvironmentEditor({
 
   return (
     <div className="p-4 text-white">
-      {/* Header: Name + Save button */}
       <div className="mb-4 flex items-center gap-2">
         {isEditingName ? (
           <input
@@ -213,10 +197,9 @@ export default function EnvironmentEditor({
         {error && <span className="text-red-400 text-sm ml-2">{error}</span>}
       </div>
 
-      {/* Variables table */}
       <div className="border border-gray-700 rounded overflow-hidden">
         <div className="grid grid-cols-12 bg-gray-900 text-xs text-gray-400 border-b border-gray-700">
-          <div className="col-span-5 px-2 py-1">Key</div>
+          <div className="col-span-5 px-2 py-1">Variable</div>
           <div className="col-span-5 px-2 py-1">Value</div>
           <div className="col-span-2 px-2 py-1 text-right">Actions</div>
         </div>
@@ -231,18 +214,21 @@ export default function EnvironmentEditor({
                 <input
                   type="text"
                   value={v.key}
-                  onChange={(e) => updateVariable(idx, "key", e.target.value)}
+                  onChange={(e) =>
+                    updateVariableLocal(idx, "key", e.target.value)
+                  }
                   className="w-full bg-transparent border-none text-sm text-white focus:outline-none"
-                  placeholder="Key"
+                  placeholder="Add Variable"
                 />
               </div>
               <div className="col-span-5 px-2 py-1">
                 <input
                   type="text"
                   value={v.value}
-                  onChange={(e) => updateVariable(idx, "value", e.target.value)}
+                  onChange={(e) =>
+                    updateVariableLocal(idx, "value", e.target.value)
+                  }
                   className="w-full bg-transparent border-none text-sm text-white focus:outline-none"
-                  placeholder="Value"
                 />
               </div>
               <div className="col-span-2 px-2 py-1 flex justify-end">

@@ -1,6 +1,12 @@
 "use client";
 
-import { useReducer, useEffect, useImperativeHandle, forwardRef } from "react";
+import {
+  useReducer,
+  useEffect,
+  useRef,
+  forwardRef,
+  useImperativeHandle,
+} from "react";
 import RequestHeader from "./RequestHeader";
 import RequestTabs from "./RequestTabs";
 import ResponsePanel from "./ResponsePanel";
@@ -156,30 +162,13 @@ const initialState: State = {
 };
 
 const reducer = (state: State, action: Action): State => {
+  // Debug: log every action
+  console.log("🔧 Reducer action:", action.type, action);
+
   switch (action.type) {
     case "OPEN_REQUEST": {
       const request = action.payload;
-      const existingIndex = state.tabs.findIndex(
-        (t) => t.type === "request" && t.requestId === request.id,
-      );
-      if (existingIndex >= 0) {
-        const tab = state.tabs[existingIndex];
-        const req = tab.requestData!;
-        return {
-          ...state,
-          activeIndex: existingIndex,
-          method: req.method,
-          url: req.url,
-          queryParams: req.query_params || {},
-          headers: req.headers || {},
-          auth: req.auth || null,
-          body: req.body || "",
-          bodyType: req.body_type || "none",
-          currentRequestId: req.id,
-          response: buildResponseDisplay(req),
-          error: null,
-        };
-      }
+      // Always create a new tab – no check for existing tabs
       const newTab: Tab = {
         id: generateTabId(),
         type: "request",
@@ -190,22 +179,26 @@ const reducer = (state: State, action: Action): State => {
       };
       const newTabs = [...state.tabs, newTab];
       const newIndex = newTabs.length - 1;
-      const req = request;
-      return {
+      const newState = {
         ...state,
         tabs: newTabs,
         activeIndex: newIndex,
-        method: req.method,
-        url: req.url,
-        queryParams: req.query_params || {},
-        headers: req.headers || {},
-        auth: req.auth || null,
-        body: req.body || "",
-        bodyType: req.body_type || "none",
-        currentRequestId: req.id,
-        response: buildResponseDisplay(req),
+        method: request.method,
+        url: request.url,
+        queryParams: request.query_params || {},
+        headers: request.headers || {},
+        auth: request.auth || null,
+        body: request.body || "",
+        bodyType: request.body_type || "none",
+        currentRequestId: request.id,
+        response: buildResponseDisplay(request),
         error: null,
       };
+      console.log(
+        "✅ After OPEN_REQUEST, tabs:",
+        newState.tabs.map((t) => t.url),
+      );
+      return newState;
     }
     case "OPEN_ENVIRONMENT_TAB": {
       const newTab: Tab = {
@@ -221,7 +214,6 @@ const reducer = (state: State, action: Action): State => {
         ...state,
         tabs: newTabs,
         activeIndex: newIndex,
-        // Reset request fields
         method: "GET",
         url: "",
         queryParams: {},
@@ -322,6 +314,10 @@ const reducer = (state: State, action: Action): State => {
     }
     case "CLOSE_TAB": {
       const index = action.payload;
+      if (index < 0 || index >= state.tabs.length) {
+        console.warn("⚠️ Invalid tab index for close:", index);
+        return state;
+      }
       const newTabs = state.tabs.filter((_, i) => i !== index);
       if (newTabs.length === 0) {
         const blankTab = createBlankTab();
@@ -476,16 +472,6 @@ const reducer = (state: State, action: Action): State => {
   }
 };
 
-const fetchEnvironmentData = async (id: number) => {
-  const env = await getEnvironment(id);
-  const vars = await getVariables(id);
-  return {
-    id: env.id,
-    name: env.name,
-    variables: vars.map((v) => ({ id: v.id, key: v.key, value: v.value })),
-  };
-};
-
 const RequestBuilder = forwardRef<RequestBuilderHandle, RequestBuilderProps>(
   ({ initialRequest, environmentId, loading: externalLoading }, ref) => {
     const [state, dispatch] = useReducer(reducer, initialState);
@@ -506,6 +492,18 @@ const RequestBuilder = forwardRef<RequestBuilderHandle, RequestBuilderProps>(
       error,
       showSaveModal,
     } = state;
+
+    const lastOpenedRequestIdRef = useRef<number | null>(null);
+
+    useEffect(() => {
+      if (
+        initialRequest &&
+        initialRequest.id !== lastOpenedRequestIdRef.current
+      ) {
+        lastOpenedRequestIdRef.current = initialRequest.id;
+        dispatch({ type: "OPEN_REQUEST", payload: initialRequest });
+      }
+    }, [initialRequest]);
 
     useImperativeHandle(ref, () => ({
       openEnvironmentTab: async (envId?: number) => {
@@ -533,12 +531,6 @@ const RequestBuilder = forwardRef<RequestBuilderHandle, RequestBuilderProps>(
         }
       },
     }));
-
-    useEffect(() => {
-      if (initialRequest) {
-        dispatch({ type: "OPEN_REQUEST", payload: initialRequest });
-      }
-    }, [initialRequest]);
 
     const buildFullUrl = (base: string, params: Record<string, string>) => {
       const filteredParams: Record<string, string> = {};
@@ -646,7 +638,6 @@ const RequestBuilder = forwardRef<RequestBuilderHandle, RequestBuilderProps>(
     }));
 
     const isLoading = internalLoading || externalLoading || false;
-
     const activeTabObject = activeIndex >= 0 ? tabs[activeIndex] : null;
 
     return (
@@ -663,7 +654,9 @@ const RequestBuilder = forwardRef<RequestBuilderHandle, RequestBuilderProps>(
               }}
               onCloseTab={(id) => {
                 const index = tabs.findIndex((t) => t.id === id);
-                if (index >= 0) dispatch({ type: "CLOSE_TAB", payload: index });
+                if (index >= 0) {
+                  dispatch({ type: "CLOSE_TAB", payload: index });
+                }
               }}
             />
           </div>
@@ -677,17 +670,15 @@ const RequestBuilder = forwardRef<RequestBuilderHandle, RequestBuilderProps>(
 
         {activeTabObject?.type === "environment" ? (
           <EnvironmentEditor
+            key={activeTabObject.id}
             environmentId={activeTabObject.environmentId}
             initialName={activeTabObject.envName || "New Environment"}
             initialVariables={
               activeTabObject.variables || [{ key: "", value: "" }]
             }
             onSave={(id, name) => {
-              // Close the tab after saving
               const index = tabs.findIndex((t) => t.id === activeTabObject.id);
               if (index >= 0) dispatch({ type: "CLOSE_TAB", payload: index });
-              // Optionally, we could trigger a refresh of the sidebar environments list.
-              // We'll handle that via a callback from Home.
             }}
             onCancel={() => {
               const index = tabs.findIndex((t) => t.id === activeTabObject.id);
@@ -707,7 +698,6 @@ const RequestBuilder = forwardRef<RequestBuilderHandle, RequestBuilderProps>(
               onSave={handleSaveClick}
               loading={isLoading}
             />
-
             <RequestTabs
               activeTab={activeTab}
               setActiveTab={(tab) =>
@@ -768,7 +758,6 @@ const RequestBuilder = forwardRef<RequestBuilderHandle, RequestBuilderProps>(
                 )}
               </div>
             </RequestTabs>
-
             {error && (
               <div className="border-t border-red-800 p-2 text-red-400 text-sm bg-red-950">
                 Error: {error}
@@ -777,7 +766,6 @@ const RequestBuilder = forwardRef<RequestBuilderHandle, RequestBuilderProps>(
             <ResponsePanel response={response} loading={isLoading} />
           </>
         )}
-
         <SaveModal
           isOpen={showSaveModal}
           onClose={() =>

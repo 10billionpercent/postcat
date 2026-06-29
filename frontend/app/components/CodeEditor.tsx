@@ -1,7 +1,6 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useState } from "react";
 
 interface CodeEditorProps {
   value: string;
@@ -12,6 +11,20 @@ interface CodeEditorProps {
   className?: string;
 }
 
+// Dynamically import Ace editor with no SSR
+const AceEditor = dynamic(
+  () =>
+    import("react-ace").then(async (mod) => {
+      // Load modes and themes using dynamic import (client-side only)
+      await import("ace-builds/src-noconflict/mode-json");
+      await import("ace-builds/src-noconflict/mode-text");
+      await import("ace-builds/src-noconflict/theme-monokai");
+      await import("ace-builds/src-noconflict/ext-language_tools");
+      return mod.default;
+    }),
+  { ssr: false },
+);
+
 export default function CustomCodeEditor({
   value,
   onChange,
@@ -20,12 +33,6 @@ export default function CustomCodeEditor({
   minHeight = "200px",
   className = "",
 }: CodeEditorProps) {
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
   const languageMap: Record<string, string> = {
     json: "json",
     text: "text",
@@ -34,7 +41,10 @@ export default function CustomCodeEditor({
     xml: "xml",
   };
 
-  if (!mounted) {
+  // Check if we're on the client – no effect needed
+  const isClient = typeof window !== "undefined";
+
+  if (!isClient) {
     // Return a placeholder div during SSR to avoid hydration mismatch
     return (
       <div
