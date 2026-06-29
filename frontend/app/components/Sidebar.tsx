@@ -24,7 +24,6 @@ import {
   RequestOut,
   Environment,
 } from "../lib/apiClient";
-import CreateEnvironmentModal from "./CreateEnvironmentModal";
 
 interface Props {
   onSelectRequest: (id: number) => void;
@@ -877,13 +876,6 @@ export default function Sidebar({
         <div className="text-sm font-semibold text-white">SPECS</div>
         <div className="text-xs text-gray-500 mt-1">FLOWS</div>
       </div>
-
-      {/* ---- Modal ---- */}
-      <CreateEnvironmentModal
-        isOpen={showEnvModal}
-        onClose={() => setShowEnvModal(false)}
-        onSuccess={handleEnvModalSuccess}
-      />
     </div>
   );
 }
