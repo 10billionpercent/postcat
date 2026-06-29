@@ -276,7 +276,6 @@ export default function HeadersEditor({
           <div className="grid grid-cols-12 bg-gray-900 text-xs text-gray-400 border-b border-gray-700">
             <div className="col-span-5 px-2 py-1">Key</div>
             <div className="col-span-5 px-2 py-1">Value</div>
-            <div className="col-span-2 px-2 py-1 text-right">Actions</div>
           </div>
 
           {displayEntries.map(([key, value], index) => {

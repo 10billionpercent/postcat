@@ -273,11 +273,12 @@ const reducer = (state: State, action: Action): State => {
       return { ...state, activeTab: action.payload };
     case "SET_REQUEST_FIELDS": {
       const newState = { ...state, ...action.payload };
-      // Update the active tab's method, url, and queryParams if they changed
+      // Update the active tab's method, url, and name if they changed
       if (newState.activeIndex >= 0 && newState.tabs[newState.activeIndex]) {
         const tab = newState.tabs[newState.activeIndex];
         const updatedTab = { ...tab };
         let changed = false;
+
         if (
           action.payload.method !== undefined &&
           action.payload.method !== tab.method
@@ -285,21 +286,26 @@ const reducer = (state: State, action: Action): State => {
           updatedTab.method = action.payload.method;
           changed = true;
         }
+
         if (
           action.payload.url !== undefined &&
           action.payload.url !== tab.url
         ) {
           updatedTab.url = action.payload.url;
+          // If URL is non-empty, clear the name so the URL displays;
+          // if empty, revert to "Untitled"
+          updatedTab.name = action.payload.url.trim() ? undefined : "Untitled";
           changed = true;
         }
+
         if (action.payload.queryParams !== undefined) {
-          // Update the requestData.query_params
           updatedTab.requestData = {
             ...tab.requestData,
             query_params: action.payload.queryParams,
           };
           changed = true;
         }
+
         if (changed) {
           const newTabs = [...newState.tabs];
           newTabs[newState.activeIndex] = updatedTab;
