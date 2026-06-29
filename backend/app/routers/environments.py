@@ -16,6 +16,14 @@ async def list_environments(db: aiosqlite.Connection = Depends(get_db)):
     rows = await cursor.fetchall()
     return [dict(row) for row in rows]
 
+@router.get("/environments/{env_id}", response_model=EnvironmentOut)
+async def get_environment(env_id: int, db: aiosqlite.Connection = Depends(get_db)):
+    cursor = await db.execute("SELECT id, name FROM environments WHERE id = ?", (env_id,))
+    row = await cursor.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Environment not found")
+    return dict(row)
+
 @router.post("/environments", response_model=EnvironmentOut)
 async def create_environment(data: EnvironmentCreate, db: aiosqlite.Connection = Depends(get_db)):
     cursor = await db.execute(

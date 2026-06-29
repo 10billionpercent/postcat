@@ -12,20 +12,6 @@ interface CodeEditorProps {
   className?: string;
 }
 
-// Dynamically import Ace editor with no SSR
-const AceEditor = dynamic(
-  () =>
-    import("react-ace").then((mod) => {
-      // Load modes and themes inside the dynamic import (client-side only)
-      require("ace-builds/src-noconflict/mode-json");
-      require("ace-builds/src-noconflict/mode-text");
-      require("ace-builds/src-noconflict/theme-monokai");
-      require("ace-builds/src-noconflict/ext-language_tools");
-      return mod.default;
-    }),
-  { ssr: false },
-);
-
 export default function CustomCodeEditor({
   value,
   onChange,

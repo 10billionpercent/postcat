@@ -29,6 +29,8 @@ import CreateEnvironmentModal from "./CreateEnvironmentModal";
 interface Props {
   onSelectRequest: (id: number) => void;
   selectedRequestId: number | null;
+  onOpenEnvironmentTab: () => void;
+  onSelectEnvironment: (id: number) => void;
 }
 
 const methodColors: Record<string, string> = {
@@ -255,7 +257,12 @@ function envReducer(state: EnvState, action: EnvAction): EnvState {
   }
 }
 
-export default function Sidebar({ onSelectRequest, selectedRequestId }: Props) {
+export default function Sidebar({
+  onSelectRequest,
+  selectedRequestId,
+  onOpenEnvironmentTab,
+  onSelectEnvironment,
+}: Props) {
   // ---- View toggle ----
   const [view, setView] = useState<"items" | "history">("items");
 
@@ -708,7 +715,7 @@ export default function Sidebar({ onSelectRequest, selectedRequestId }: Props) {
       );
     }
     return (
-      <div className="px-3 py-1 space-y-1">
+      <div className="space-y-1">
         {environments.map((env) => {
           const isEditing = editingEnvironmentId === env.id;
           const isDropdownOpen = environmentDropdownOpen[env.id] || false;
@@ -716,7 +723,7 @@ export default function Sidebar({ onSelectRequest, selectedRequestId }: Props) {
           return (
             <div
               key={env.id}
-              className="flex items-center gap-2 py-0.5 group hover:bg-gray-800 px-1 rounded"
+              className="flex items-center gap-2 px-3 py-2 group hover:bg-gray-800"
             >
               {isEditing ? (
                 <input
@@ -740,7 +747,10 @@ export default function Sidebar({ onSelectRequest, selectedRequestId }: Props) {
                   autoFocus
                 />
               ) : (
-                <span className="text-sm font-medium text-white">
+                <span
+                  className="text-sm font-medium text-white cursor-pointer flex-1"
+                  onClick={() => onSelectEnvironment(env.id)}
+                >
                   {env.name}
                 </span>
               )}
@@ -849,7 +859,7 @@ export default function Sidebar({ onSelectRequest, selectedRequestId }: Props) {
                   Environments
                 </span>
                 <button
-                  onClick={() => setShowEnvModal(true)}
+                  onClick={onOpenEnvironmentTab}
                   className="text-gray-400 hover:text-white"
                 >
                   <Plus className="w-4 h-4" />

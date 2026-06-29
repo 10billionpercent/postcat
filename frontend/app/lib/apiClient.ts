@@ -149,20 +149,6 @@ export async function createEnvironment(name: string): Promise<Environment> {
   return res.json();
 }
 
-export async function createVariable(
-  envId: number,
-  key: string,
-  value: string,
-): Promise<Variable> {
-  const res = await fetch(`${API_BASE}/environments/${envId}/variables`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ key, value }),
-  });
-  if (!res.ok) throw new Error("Failed to create variable");
-  return res.json();
-}
-
 export async function getVariables(envId: number): Promise<Variable[]> {
   const res = await fetch(`${API_BASE}/environments/${envId}/variables`);
   if (!res.ok) throw new Error("Failed to fetch variables");
@@ -207,4 +193,67 @@ export async function deleteEnvironment(id: number): Promise<void> {
     method: "DELETE",
   });
   if (!res.ok) throw new Error("Failed to delete environment");
+}
+
+export interface EnvironmentVariable {
+  id: number;
+  environment_id: number;
+  key: string;
+  value: string;
+}
+
+export async function getEnvironmentVariables(
+  envId: number,
+): Promise<EnvironmentVariable[]> {
+  const res = await fetch(`${API_BASE}/environments/${envId}/variables`);
+  if (!res.ok) throw new Error("Failed to fetch variables");
+  return res.json();
+}
+
+export async function createVariable(
+  envId: number,
+  key: string,
+  value: string,
+): Promise<EnvironmentVariable> {
+  const res = await fetch(`${API_BASE}/environments/${envId}/variables`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key, value }),
+  });
+  if (!res.ok) throw new Error("Failed to create variable");
+  return res.json();
+}
+
+export async function updateVariable(
+  varId: number,
+  key: string,
+  value: string,
+): Promise<EnvironmentVariable> {
+  const res = await fetch(`${API_BASE}/variables/${varId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key, value }),
+  });
+  if (!res.ok) throw new Error("Failed to update variable");
+  return res.json();
+}
+
+export async function deleteVariable(varId: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/variables/${varId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error("Failed to delete variable");
+}
+
+export interface Variable {
+  id: number;
+  environment_id: number;
+  key: string;
+  value: string;
+}
+
+export async function getEnvironment(id: number): Promise<Environment> {
+  const res = await fetch(`${API_BASE}/environments/${id}`);
+  if (!res.ok) throw new Error("Failed to fetch environment");
+  return res.json();
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useReducer, useEffect } from "react";
+import { useReducer, useEffect, useImperativeHandle, forwardRef } from "react";
 import RequestHeader from "./RequestHeader";
 import RequestTabs from "./RequestTabs";
 import ResponsePanel from "./ResponsePanel";
@@ -8,6 +8,7 @@ import BodyEditor from "./BodyEditor";
 import ParamsEditor from "./ParamsEditor";
 import AuthEditor from "./AuthEditor";
 import HeadersEditor from "./HeadersEditor";
+import EnvironmentEditor from "./EnvironmentEditor";
 import SaveModal from "./SaveModal";
 import RequestTabsBar from "./RequestTabsBar";
 import { Plus } from "lucide-react";
@@ -15,7 +16,13 @@ import {
   sendRequest,
   SendRequestPayload,
   RequestOut,
+  getEnvironment,
+  getVariables,
 } from "../../lib/apiClient";
+
+export interface RequestBuilderHandle {
+  openEnvironmentTab: (envId?: number) => void;
+}
 
 interface RequestBuilderProps {
   initialRequest?: RequestOut | null;
@@ -23,13 +30,26 @@ interface RequestBuilderProps {
   loading?: boolean;
 }
 
+interface VariableItem {
+  id?: number;
+  key: string;
+  value: string;
+}
+
 interface Tab {
   id: string;
-  requestId: number;
-  method: string;
-  url: string;
+  type: "request" | "environment";
+  // request fields
+  requestId?: number;
+  method?: string;
+  url?: string;
+  requestData?: RequestOut;
+  // environment fields
+  environmentId?: number;
+  envName?: string;
+  variables?: { key: string; value: string }[];
+  // common
   name?: string;
-  requestData: RequestOut;
 }
 
 let tabCounter = 0;
@@ -48,7 +68,6 @@ const buildResponseDisplay = (request: RequestOut) => {
   return null;
 };
 
-// ---- Default blank request ----
 const DEFAULT_BLANK_REQUEST: RequestOut = {
   id: -1,
   collection_id: null,
@@ -68,8 +87,9 @@ const DEFAULT_BLANK_REQUEST: RequestOut = {
   executed_at: null,
 };
 
-const createBlankTab = () => ({
+const createBlankTab = (): Tab => ({
   id: generateTabId(),
+  type: "request",
   requestId: -1,
   method: "GET",
   url: "",
@@ -77,7 +97,6 @@ const createBlankTab = () => ({
   requestData: DEFAULT_BLANK_REQUEST,
 });
 
-// ---- State & Actions ----
 type State = {
   tabs: Tab[];
   activeIndex: number;
@@ -98,6 +117,11 @@ type State = {
 
 type Action =
   | { type: "OPEN_REQUEST"; payload: RequestOut }
+  | { type: "OPEN_ENVIRONMENT_TAB" }
+  | {
+      type: "OPEN_EXISTING_ENVIRONMENT_TAB";
+      payload: { id: number; name: string; variables: VariableItem[] };
+    }
   | { type: "OPEN_BLANK_TAB" }
   | { type: "SELECT_TAB"; payload: number }
   | { type: "CLOSE_TAB"; payload: number }
@@ -136,11 +160,11 @@ const reducer = (state: State, action: Action): State => {
     case "OPEN_REQUEST": {
       const request = action.payload;
       const existingIndex = state.tabs.findIndex(
-        (t) => t.requestId === request.id,
+        (t) => t.type === "request" && t.requestId === request.id,
       );
       if (existingIndex >= 0) {
         const tab = state.tabs[existingIndex];
-        const req = tab.requestData;
+        const req = tab.requestData!;
         return {
           ...state,
           activeIndex: existingIndex,
@@ -158,6 +182,7 @@ const reducer = (state: State, action: Action): State => {
       }
       const newTab: Tab = {
         id: generateTabId(),
+        type: "request",
         requestId: request.id,
         method: request.method,
         url: request.url,
@@ -179,6 +204,61 @@ const reducer = (state: State, action: Action): State => {
         bodyType: req.body_type || "none",
         currentRequestId: req.id,
         response: buildResponseDisplay(req),
+        error: null,
+      };
+    }
+    case "OPEN_ENVIRONMENT_TAB": {
+      const newTab: Tab = {
+        id: generateTabId(),
+        type: "environment",
+        envName: "New Environment",
+        variables: [{ key: "", value: "" }],
+        name: "New Environment",
+      };
+      const newTabs = [...state.tabs, newTab];
+      const newIndex = newTabs.length - 1;
+      return {
+        ...state,
+        tabs: newTabs,
+        activeIndex: newIndex,
+        // Reset request fields
+        method: "GET",
+        url: "",
+        queryParams: {},
+        headers: {},
+        auth: null,
+        body: "",
+        bodyType: "none",
+        currentRequestId: null,
+        response: null,
+        error: null,
+      };
+    }
+    case "OPEN_EXISTING_ENVIRONMENT_TAB": {
+      const { id, name, variables } = action.payload;
+      const newTab: Tab = {
+        id: generateTabId(),
+        type: "environment",
+        environmentId: id,
+        envName: name,
+        variables: variables.length > 0 ? variables : [{ key: "", value: "" }],
+        name: name,
+      };
+      const newTabs = [...state.tabs, newTab];
+      const newIndex = newTabs.length - 1;
+      return {
+        ...state,
+        tabs: newTabs,
+        activeIndex: newIndex,
+        method: "GET",
+        url: "",
+        queryParams: {},
+        headers: {},
+        auth: null,
+        body: "",
+        bodyType: "none",
+        currentRequestId: null,
+        response: null,
         error: null,
       };
     }
@@ -207,27 +287,43 @@ const reducer = (state: State, action: Action): State => {
       if (index === state.activeIndex) return state;
       const tab = state.tabs[index];
       if (!tab) return state;
-      const req = tab.requestData;
-      return {
-        ...state,
-        activeIndex: index,
-        method: req.method,
-        url: req.url,
-        queryParams: req.query_params || {},
-        headers: req.headers || {},
-        auth: req.auth || null,
-        body: req.body || "",
-        bodyType: req.body_type || "none",
-        currentRequestId: req.id,
-        response: buildResponseDisplay(req),
-        error: null,
-      };
+      if (tab.type === "environment") {
+        return {
+          ...state,
+          activeIndex: index,
+          method: "GET",
+          url: "",
+          queryParams: {},
+          headers: {},
+          auth: null,
+          body: "",
+          bodyType: "none",
+          currentRequestId: null,
+          response: null,
+          error: null,
+        };
+      } else {
+        const req = tab.requestData!;
+        return {
+          ...state,
+          activeIndex: index,
+          method: req.method,
+          url: req.url,
+          queryParams: req.query_params || {},
+          headers: req.headers || {},
+          auth: req.auth || null,
+          body: req.body || "",
+          bodyType: req.body_type || "none",
+          currentRequestId: req.id,
+          response: buildResponseDisplay(req),
+          error: null,
+        };
+      }
     }
     case "CLOSE_TAB": {
       const index = action.payload;
       const newTabs = state.tabs.filter((_, i) => i !== index);
       if (newTabs.length === 0) {
-        // If all tabs closed, create a new blank tab
         const blankTab = createBlankTab();
         return {
           ...state,
@@ -252,60 +348,71 @@ const reducer = (state: State, action: Action): State => {
         newActiveIndex = state.activeIndex - 1;
       }
       const tab = newTabs[newActiveIndex];
-      const req = tab.requestData;
-      return {
-        ...state,
-        tabs: newTabs,
-        activeIndex: newActiveIndex,
-        method: req.method,
-        url: req.url,
-        queryParams: req.query_params || {},
-        headers: req.headers || {},
-        auth: req.auth || null,
-        body: req.body || "",
-        bodyType: req.body_type || "none",
-        currentRequestId: req.id,
-        response: buildResponseDisplay(req),
-        error: null,
-      };
+      if (tab.type === "environment") {
+        return {
+          ...state,
+          tabs: newTabs,
+          activeIndex: newActiveIndex,
+          method: "GET",
+          url: "",
+          queryParams: {},
+          headers: {},
+          auth: null,
+          body: "",
+          bodyType: "none",
+          currentRequestId: null,
+          response: null,
+          error: null,
+        };
+      } else {
+        const req = tab.requestData!;
+        return {
+          ...state,
+          tabs: newTabs,
+          activeIndex: newActiveIndex,
+          method: req.method,
+          url: req.url,
+          queryParams: req.query_params || {},
+          headers: req.headers || {},
+          auth: req.auth || null,
+          body: req.body || "",
+          bodyType: req.body_type || "none",
+          currentRequestId: req.id,
+          response: buildResponseDisplay(req),
+          error: null,
+        };
+      }
     }
     case "SET_ACTIVE_TAB":
       return { ...state, activeTab: action.payload };
     case "SET_REQUEST_FIELDS": {
       const newState = { ...state, ...action.payload };
-      // Update the active tab's method, url, and name if they changed
-      if (newState.activeIndex >= 0 && newState.tabs[newState.activeIndex]) {
-        const tab = newState.tabs[newState.activeIndex];
-        const updatedTab = { ...tab };
+      const activeTab = newState.tabs[newState.activeIndex];
+      if (activeTab && activeTab.type === "request") {
+        const updatedTab = { ...activeTab };
         let changed = false;
-
         if (
           action.payload.method !== undefined &&
-          action.payload.method !== tab.method
+          action.payload.method !== activeTab.method
         ) {
           updatedTab.method = action.payload.method;
           changed = true;
         }
-
         if (
           action.payload.url !== undefined &&
-          action.payload.url !== tab.url
+          action.payload.url !== activeTab.url
         ) {
           updatedTab.url = action.payload.url;
-          // If URL is non-empty, clear the name so the URL displays;
-          // if empty, revert to "Untitled"
           updatedTab.name = action.payload.url.trim() ? undefined : "Untitled";
           changed = true;
         }
-
         if (action.payload.queryParams !== undefined) {
           updatedTab.requestData = {
-            ...tab.requestData,
+            ...activeTab.requestData!,
             query_params: action.payload.queryParams,
           };
           changed = true;
         }
-
         if (changed) {
           const newTabs = [...newState.tabs];
           newTabs[newState.activeIndex] = updatedTab;
@@ -327,10 +434,13 @@ const reducer = (state: State, action: Action): State => {
     case "UPDATE_TAB_AFTER_SEND": {
       const { requestId, response } = action.payload;
       const index = state.tabs.findIndex(
-        (t) => t.requestId === state.currentRequestId,
+        (t) => t.type === "request" && t.requestId === state.currentRequestId,
       );
       if (index === -1) return state;
-      const oldTab = state.tabs[index];
+      const oldTab = state.tabs[index] as Tab & {
+        type: "request";
+        requestData: RequestOut;
+      };
       const updatedRequest: RequestOut = {
         ...oldTab.requestData,
         id: requestId,
@@ -343,7 +453,7 @@ const reducer = (state: State, action: Action): State => {
       };
       const updatedTab: Tab = {
         ...oldTab,
-        requestId: requestId,
+        requestId,
         requestData: updatedRequest,
       };
       const newTabs = [...state.tabs];
@@ -366,253 +476,319 @@ const reducer = (state: State, action: Action): State => {
   }
 };
 
-export default function RequestBuilder({
-  initialRequest,
-  environmentId,
-  loading: externalLoading,
-}: RequestBuilderProps) {
-  const [state, dispatch] = useReducer(reducer, initialState);
-  const {
-    tabs,
-    activeIndex,
-    activeTab,
-    method,
-    url,
-    queryParams,
-    headers,
-    auth,
-    body,
-    bodyType,
-    currentRequestId,
-    response,
-    loading: internalLoading,
-    error,
-    showSaveModal,
-  } = state;
-
-  // ---- Handle initial request from sidebar ----
-  useEffect(() => {
-    if (initialRequest) {
-      dispatch({ type: "OPEN_REQUEST", payload: initialRequest });
-    }
-  }, [initialRequest]);
-
-  // Build the full URL with query params
-  const buildFullUrl = (base: string, params: Record<string, string>) => {
-    const filteredParams: Record<string, string> = {};
-    for (const [key, value] of Object.entries(params)) {
-      const trimmedKey = key.trim();
-      const trimmedValue = value.trim();
-      if (trimmedKey !== "" && trimmedValue !== "") {
-        filteredParams[trimmedKey] = trimmedValue;
-      }
-    }
-    const queryString = new URLSearchParams(filteredParams).toString();
-    if (!queryString) return base;
-    const connector = base.includes("?") ? "&" : "?";
-    return `${base}${connector}${queryString}`;
+const fetchEnvironmentData = async (id: number) => {
+  const env = await getEnvironment(id);
+  const vars = await getVariables(id);
+  return {
+    id: env.id,
+    name: env.name,
+    variables: vars.map((v) => ({ id: v.id, key: v.key, value: v.value })),
   };
+};
 
-  const fullUrl = buildFullUrl(url, queryParams);
+const RequestBuilder = forwardRef<RequestBuilderHandle, RequestBuilderProps>(
+  ({ initialRequest, environmentId, loading: externalLoading }, ref) => {
+    const [state, dispatch] = useReducer(reducer, initialState);
+    const {
+      tabs,
+      activeIndex,
+      activeTab,
+      method,
+      url,
+      queryParams,
+      headers,
+      auth,
+      body,
+      bodyType,
+      currentRequestId,
+      response,
+      loading: internalLoading,
+      error,
+      showSaveModal,
+    } = state;
 
-  const handleUrlChange = (input: string) => {
-    try {
-      const parsed = new URL(input);
-      const base = parsed.origin + parsed.pathname;
-      const params: Record<string, string> = {};
-      parsed.searchParams.forEach((value, key) => {
-        params[key] = value;
-      });
-      dispatch({
-        type: "SET_REQUEST_FIELDS",
-        payload: { url: base, queryParams: params },
-      });
-    } catch {
-      const [base, query] = input.split("?");
-      if (query) {
+    useImperativeHandle(ref, () => ({
+      openEnvironmentTab: async (envId?: number) => {
+        if (envId) {
+          try {
+            const env = await getEnvironment(envId);
+            const vars = await getVariables(envId);
+            dispatch({
+              type: "OPEN_EXISTING_ENVIRONMENT_TAB",
+              payload: {
+                id: env.id,
+                name: env.name,
+                variables: vars.map((v) => ({
+                  id: v.id,
+                  key: v.key,
+                  value: v.value,
+                })),
+              },
+            });
+          } catch (err) {
+            console.error("Failed to load environment", err);
+          }
+        } else {
+          dispatch({ type: "OPEN_ENVIRONMENT_TAB" });
+        }
+      },
+    }));
+
+    useEffect(() => {
+      if (initialRequest) {
+        dispatch({ type: "OPEN_REQUEST", payload: initialRequest });
+      }
+    }, [initialRequest]);
+
+    const buildFullUrl = (base: string, params: Record<string, string>) => {
+      const filteredParams: Record<string, string> = {};
+      for (const [key, value] of Object.entries(params)) {
+        const trimmedKey = key.trim();
+        const trimmedValue = value.trim();
+        if (trimmedKey !== "" && trimmedValue !== "") {
+          filteredParams[trimmedKey] = trimmedValue;
+        }
+      }
+      const queryString = new URLSearchParams(filteredParams).toString();
+      if (!queryString) return base;
+      const connector = base.includes("?") ? "&" : "?";
+      return `${base}${connector}${queryString}`;
+    };
+
+    const fullUrl = buildFullUrl(url, queryParams);
+
+    const handleUrlChange = (input: string) => {
+      try {
+        const parsed = new URL(input);
+        const base = parsed.origin + parsed.pathname;
         const params: Record<string, string> = {};
-        new URLSearchParams(query).forEach((value, key) => {
+        parsed.searchParams.forEach((value, key) => {
           params[key] = value;
         });
         dispatch({
           type: "SET_REQUEST_FIELDS",
           payload: { url: base, queryParams: params },
         });
-      } else {
-        dispatch({
-          type: "SET_REQUEST_FIELDS",
-          payload: { url: input, queryParams: {} },
-        });
+      } catch {
+        const [base, query] = input.split("?");
+        if (query) {
+          const params: Record<string, string> = {};
+          new URLSearchParams(query).forEach((value, key) => {
+            params[key] = value;
+          });
+          dispatch({
+            type: "SET_REQUEST_FIELDS",
+            payload: { url: base, queryParams: params },
+          });
+        } else {
+          dispatch({
+            type: "SET_REQUEST_FIELDS",
+            payload: { url: input, queryParams: {} },
+          });
+        }
       }
-    }
-  };
-
-  const handleSend = async () => {
-    // Filter out empty keys from headers
-    const filteredHeaders = Object.fromEntries(
-      Object.entries(headers).filter(
-        ([key, value]) => key.trim() !== "" && value.trim() !== "",
-      ),
-    );
-    // Filter out empty keys from queryParams
-    const filteredQueryParams = Object.fromEntries(
-      Object.entries(queryParams).filter(
-        ([key, value]) => key.trim() !== "" && value.trim() !== "",
-      ),
-    );
-    const payload: SendRequestPayload = {
-      method,
-      url,
-      query_params: filteredQueryParams,
-      headers: filteredHeaders,
-      auth,
-      environment_id: environmentId,
-      ...(bodyType !== "none" && { body, body_type: bodyType }),
     };
 
-    dispatch({ type: "SET_LOADING", payload: true });
-    dispatch({ type: "SET_ERROR", payload: null });
-    try {
-      const result = await sendRequest(payload);
-      dispatch({ type: "SET_RESPONSE", payload: result });
-      if (result.request_id) {
-        dispatch({
-          type: "UPDATE_TAB_AFTER_SEND",
-          payload: { requestId: result.request_id, response: result },
-        });
+    const handleSend = async () => {
+      const filteredHeaders = Object.fromEntries(
+        Object.entries(headers).filter(
+          ([key, value]) => key.trim() !== "" && value.trim() !== "",
+        ),
+      );
+      const filteredQueryParams = Object.fromEntries(
+        Object.entries(queryParams).filter(
+          ([key, value]) => key.trim() !== "" && value.trim() !== "",
+        ),
+      );
+      const payload: SendRequestPayload = {
+        method,
+        url,
+        query_params: filteredQueryParams,
+        headers: filteredHeaders,
+        auth,
+        environment_id: environmentId,
+        ...(bodyType !== "none" && { body, body_type: bodyType }),
+      };
+
+      dispatch({ type: "SET_LOADING", payload: true });
+      dispatch({ type: "SET_ERROR", payload: null });
+      try {
+        const result = await sendRequest(payload);
+        dispatch({ type: "SET_RESPONSE", payload: result });
+        if (result.request_id) {
+          dispatch({
+            type: "UPDATE_TAB_AFTER_SEND",
+            payload: { requestId: result.request_id, response: result },
+          });
+        }
+      } catch (err: any) {
+        dispatch({ type: "SET_ERROR", payload: err.message });
+        dispatch({ type: "SET_RESPONSE", payload: null });
+      } finally {
+        dispatch({ type: "SET_LOADING", payload: false });
       }
-    } catch (err: any) {
-      dispatch({ type: "SET_ERROR", payload: err.message });
-      dispatch({ type: "SET_RESPONSE", payload: null });
-    } finally {
-      dispatch({ type: "SET_LOADING", payload: false });
-    }
-  };
+    };
 
-  const handleSaveClick = () => {
-    dispatch({ type: "SET_SHOW_SAVE_MODAL", payload: true });
-  };
+    const handleSaveClick = () => {
+      dispatch({ type: "SET_SHOW_SAVE_MODAL", payload: true });
+    };
 
-  const activeTabId = activeIndex >= 0 ? tabs[activeIndex]?.id : null;
-  const tabsBarData = tabs.map((tab) => ({
-    id: tab.id,
-    method: tab.method,
-    url: tab.url,
-    name: tab.name,
-  }));
+    const activeTabId = activeIndex >= 0 ? tabs[activeIndex]?.id : null;
+    const tabsBarData = tabs.map((tab) => ({
+      id: tab.id,
+      method: tab.type === "request" ? tab.method || "GET" : "env",
+      url:
+        tab.type === "request" ? tab.url || "" : tab.envName || "Environment",
+      name:
+        tab.type === "request"
+          ? tab.name || tab.url
+          : tab.envName || "Environment",
+    }));
 
-  const isLoading = internalLoading || externalLoading || false;
+    const isLoading = internalLoading || externalLoading || false;
 
-  return (
-    <div className="flex flex-col h-full bg-black text-white">
-      <div className="flex items-center border-b border-gray-800 bg-black shrink-0 px-2">
-        <div className="flex-1 min-w-0 overflow-x-auto">
-          <RequestTabsBar
-            tabs={tabsBarData}
-            activeTabId={activeTabId}
-            onSelectTab={(id) => {
-              const index = tabs.findIndex((t) => t.id === id);
-              if (index >= 0) dispatch({ type: "SELECT_TAB", payload: index });
+    const activeTabObject = activeIndex >= 0 ? tabs[activeIndex] : null;
+
+    return (
+      <div className="flex flex-col h-full bg-black text-white">
+        <div className="flex items-center border-b border-gray-800 bg-black shrink-0 px-2">
+          <div className="flex-1 min-w-0 overflow-x-auto">
+            <RequestTabsBar
+              tabs={tabsBarData}
+              activeTabId={activeTabId}
+              onSelectTab={(id) => {
+                const index = tabs.findIndex((t) => t.id === id);
+                if (index >= 0)
+                  dispatch({ type: "SELECT_TAB", payload: index });
+              }}
+              onCloseTab={(id) => {
+                const index = tabs.findIndex((t) => t.id === id);
+                if (index >= 0) dispatch({ type: "CLOSE_TAB", payload: index });
+              }}
+            />
+          </div>
+          <button
+            onClick={() => dispatch({ type: "OPEN_BLANK_TAB" })}
+            className="flex-shrink-0 ml-1 p-1 text-gray-400 hover:text-white hover:bg-gray-800 rounded"
+          >
+            <Plus className="w-4 h-4" />
+          </button>
+        </div>
+
+        {activeTabObject?.type === "environment" ? (
+          <EnvironmentEditor
+            environmentId={activeTabObject.environmentId}
+            initialName={activeTabObject.envName || "New Environment"}
+            initialVariables={
+              activeTabObject.variables || [{ key: "", value: "" }]
+            }
+            onSave={(id, name) => {
+              // Close the tab after saving
+              const index = tabs.findIndex((t) => t.id === activeTabObject.id);
+              if (index >= 0) dispatch({ type: "CLOSE_TAB", payload: index });
+              // Optionally, we could trigger a refresh of the sidebar environments list.
+              // We'll handle that via a callback from Home.
             }}
-            onCloseTab={(id) => {
-              const index = tabs.findIndex((t) => t.id === id);
+            onCancel={() => {
+              const index = tabs.findIndex((t) => t.id === activeTabObject.id);
               if (index >= 0) dispatch({ type: "CLOSE_TAB", payload: index });
             }}
           />
-        </div>
-        <button
-          onClick={() => dispatch({ type: "OPEN_BLANK_TAB" })}
-          className="flex-shrink-0 ml-1 p-1 text-gray-400 hover:text-white hover:bg-gray-800 rounded"
-        >
-          <Plus className="w-4 h-4" />
-        </button>
+        ) : (
+          <>
+            <RequestHeader
+              method={method}
+              setMethod={(m) =>
+                dispatch({ type: "SET_REQUEST_FIELDS", payload: { method: m } })
+              }
+              url={fullUrl}
+              setUrl={handleUrlChange}
+              onSend={handleSend}
+              onSave={handleSaveClick}
+              loading={isLoading}
+            />
+
+            <RequestTabs
+              activeTab={activeTab}
+              setActiveTab={(tab) =>
+                dispatch({ type: "SET_ACTIVE_TAB", payload: tab })
+              }
+            >
+              <div className="flex-1 p-4 overflow-auto bg-black relative">
+                {activeTab === "headers" && (
+                  <HeadersEditor
+                    headers={headers}
+                    onChange={(newHeaders) =>
+                      dispatch({
+                        type: "SET_REQUEST_FIELDS",
+                        payload: { headers: newHeaders },
+                      })
+                    }
+                  />
+                )}
+                {activeTab === "params" && (
+                  <ParamsEditor
+                    params={queryParams}
+                    onChange={(newParams) =>
+                      dispatch({
+                        type: "SET_REQUEST_FIELDS",
+                        payload: { queryParams: newParams },
+                      })
+                    }
+                  />
+                )}
+                {activeTab === "auth" && (
+                  <AuthEditor
+                    auth={auth}
+                    onChange={(newAuth) =>
+                      dispatch({
+                        type: "SET_REQUEST_FIELDS",
+                        payload: { auth: newAuth },
+                      })
+                    }
+                  />
+                )}
+                {activeTab === "body" && (
+                  <BodyEditor
+                    body={body}
+                    setBody={(b) =>
+                      dispatch({
+                        type: "SET_REQUEST_FIELDS",
+                        payload: { body: b },
+                      })
+                    }
+                    bodyType={bodyType}
+                    setBodyType={(bt) =>
+                      dispatch({
+                        type: "SET_REQUEST_FIELDS",
+                        payload: { bodyType: bt },
+                      })
+                    }
+                  />
+                )}
+              </div>
+            </RequestTabs>
+
+            {error && (
+              <div className="border-t border-red-800 p-2 text-red-400 text-sm bg-red-950">
+                Error: {error}
+              </div>
+            )}
+            <ResponsePanel response={response} loading={isLoading} />
+          </>
+        )}
+
+        <SaveModal
+          isOpen={showSaveModal}
+          onClose={() =>
+            dispatch({ type: "SET_SHOW_SAVE_MODAL", payload: false })
+          }
+          requestId={currentRequestId!}
+        />
       </div>
+    );
+  },
+);
 
-      <RequestHeader
-        method={method}
-        setMethod={(m) =>
-          dispatch({ type: "SET_REQUEST_FIELDS", payload: { method: m } })
-        }
-        url={fullUrl}
-        setUrl={handleUrlChange}
-        onSend={handleSend}
-        onSave={handleSaveClick}
-        loading={isLoading}
-      />
-
-      <RequestTabs
-        activeTab={activeTab}
-        setActiveTab={(tab) =>
-          dispatch({ type: "SET_ACTIVE_TAB", payload: tab })
-        }
-      >
-        <div className="flex-1 p-4 overflow-auto bg-black relative">
-          {activeTab === "headers" && (
-            <HeadersEditor
-              headers={headers}
-              onChange={(newHeaders) =>
-                dispatch({
-                  type: "SET_REQUEST_FIELDS",
-                  payload: { headers: newHeaders },
-                })
-              }
-            />
-          )}
-
-          {activeTab === "params" && (
-            <ParamsEditor
-              params={queryParams}
-              onChange={(newParams) =>
-                dispatch({
-                  type: "SET_REQUEST_FIELDS",
-                  payload: { queryParams: newParams },
-                })
-              }
-            />
-          )}
-          {activeTab === "auth" && (
-            <AuthEditor
-              auth={auth}
-              onChange={(newAuth) =>
-                dispatch({
-                  type: "SET_REQUEST_FIELDS",
-                  payload: { auth: newAuth },
-                })
-              }
-            />
-          )}
-          {activeTab === "body" && (
-            <BodyEditor
-              body={body}
-              setBody={(b) =>
-                dispatch({ type: "SET_REQUEST_FIELDS", payload: { body: b } })
-              }
-              bodyType={bodyType}
-              setBodyType={(bt) =>
-                dispatch({
-                  type: "SET_REQUEST_FIELDS",
-                  payload: { bodyType: bt },
-                })
-              }
-            />
-          )}
-        </div>
-      </RequestTabs>
-
-      {error && (
-        <div className="border-t border-red-800 p-2 text-red-400 text-sm bg-red-950">
-          Error: {error}
-        </div>
-      )}
-      <ResponsePanel response={response} loading={isLoading} />
-
-      <SaveModal
-        isOpen={showSaveModal}
-        onClose={() =>
-          dispatch({ type: "SET_SHOW_SAVE_MODAL", payload: false })
-        }
-        requestId={currentRequestId!}
-      />
-    </div>
-  );
-}
+RequestBuilder.displayName = "RequestBuilder";
+export default RequestBuilder;
