@@ -718,7 +718,6 @@ export default function Sidebar({ onSelectRequest, selectedRequestId }: Props) {
               key={env.id}
               className="flex items-center gap-2 py-0.5 group hover:bg-gray-800 px-1 rounded"
             >
-              <span className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0"></span>
               {isEditing ? (
                 <input
                   ref={inputRef}
@@ -741,7 +740,9 @@ export default function Sidebar({ onSelectRequest, selectedRequestId }: Props) {
                   autoFocus
                 />
               ) : (
-                <span className="text-xs text-gray-300 flex-1">{env.name}</span>
+                <span className="text-sm font-medium text-white">
+                  {env.name}
+                </span>
               )}
               <div className="relative flex-shrink-0">
                 <button
@@ -823,7 +824,7 @@ export default function Sidebar({ onSelectRequest, selectedRequestId }: Props) {
       <div className="flex-1 overflow-y-auto">
         {view === "items" && (
           <>
-            <div className="px-4 py-3 border-b border-gray-800 flex items-center justify-between shrink-0">
+            <div className="px-4 py-3 flex items-center justify-between shrink-0">
               <span className="text-sm font-semibold text-white">
                 Collections
               </span>
@@ -840,23 +841,25 @@ export default function Sidebar({ onSelectRequest, selectedRequestId }: Props) {
               </button>
             </div>
             {renderCollections()}
+
+            {/* ---- Environments Section ---- */}
+            <div className="border-t border-gray-800 shrink-0">
+              <div className="px-4 py-3 flex items-center justify-between">
+                <span className="text-sm font-semibold text-white">
+                  Environments
+                </span>
+                <button
+                  onClick={() => setShowEnvModal(true)}
+                  className="text-gray-400 hover:text-white"
+                >
+                  <Plus className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="pb-2">{renderEnvironments()}</div>
+            </div>
           </>
         )}
         {view === "history" && renderHistory()}
-      </div>
-
-      {/* ---- Environments Section (always visible) ---- */}
-      <div className="border-t border-gray-800 shrink-0">
-        <div className="px-4 py-3 flex items-center justify-between">
-          <span className="text-sm font-semibold text-white">Environments</span>
-          <button
-            onClick={() => setShowEnvModal(true)}
-            className="text-gray-400 hover:text-white"
-          >
-            <Plus className="w-4 h-4" />
-          </button>
-        </div>
-        <div className="pb-2">{renderEnvironments()}</div>
       </div>
 
       {/* ---- Bottom placeholders ---- */}
