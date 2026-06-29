@@ -7,6 +7,7 @@ import ResponsePanel from "./ResponsePanel";
 import BodyEditor from "./BodyEditor";
 import ParamsEditor from "./ParamsEditor";
 import AuthEditor from "./AuthEditor";
+import HeadersEditor from "./HeadersEditor";
 import SaveModal from "./SaveModal";
 import RequestTabsBar from "./RequestTabsBar";
 import { Plus } from "lucide-react";
@@ -441,11 +442,23 @@ export default function RequestBuilder({
   };
 
   const handleSend = async () => {
+    // Filter out empty keys from headers
+    const filteredHeaders = Object.fromEntries(
+      Object.entries(headers).filter(
+        ([key, value]) => key.trim() !== "" && value.trim() !== "",
+      ),
+    );
+    // Filter out empty keys from queryParams
+    const filteredQueryParams = Object.fromEntries(
+      Object.entries(queryParams).filter(
+        ([key, value]) => key.trim() !== "" && value.trim() !== "",
+      ),
+    );
     const payload: SendRequestPayload = {
       method,
       url,
-      query_params: queryParams,
-      headers,
+      query_params: filteredQueryParams,
+      headers: filteredHeaders,
       auth,
       environment_id: environmentId,
       ...(bodyType !== "none" && { body, body_type: bodyType }),
@@ -526,6 +539,18 @@ export default function RequestBuilder({
         }
       >
         <div className="flex-1 p-4 overflow-auto bg-black relative">
+          {activeTab === "headers" && (
+            <HeadersEditor
+              headers={headers}
+              onChange={(newHeaders) =>
+                dispatch({
+                  type: "SET_REQUEST_FIELDS",
+                  payload: { headers: newHeaders },
+                })
+              }
+            />
+          )}
+
           {activeTab === "params" && (
             <ParamsEditor
               params={queryParams}
@@ -547,9 +572,6 @@ export default function RequestBuilder({
                 })
               }
             />
-          )}
-          {activeTab === "headers" && (
-            <div className="text-gray-400">Headers editor (coming soon)</div>
           )}
           {activeTab === "body" && (
             <BodyEditor

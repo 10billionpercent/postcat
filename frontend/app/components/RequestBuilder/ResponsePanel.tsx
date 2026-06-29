@@ -30,9 +30,6 @@ export default function ResponsePanel({ response, loading }: Props) {
         </span>
         <span className="text-gray-600">{response.responseTime} ms</span>
         <span className="text-gray-600">{response.responseSize} bytes</span>
-        <button className="ml-auto text-sm text-blue-600 hover:underline">
-          Visualize
-        </button>
       </div>
       <div className="flex-1 overflow-auto p-4 font-mono text-sm whitespace-pre-wrap bg-black">
         {response.body}
