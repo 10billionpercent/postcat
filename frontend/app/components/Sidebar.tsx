@@ -1,15 +1,14 @@
 "use client";
 
-import { useReducer, useEffect, useState } from "react";
+import { useReducer, useEffect, useState, useRef } from "react";
 import {
   ChevronDown,
   ChevronRight,
   Plus,
-  Folder,
-  Globe,
   Loader2,
   History,
   Layers,
+  MoreHorizontal,
 } from "lucide-react";
 import {
   getCollections,
@@ -17,6 +16,10 @@ import {
   createCollection,
   getHistory,
   getEnvironments,
+  updateCollection,
+  deleteCollection,
+  updateEnvironment,
+  deleteEnvironment,
   Collection,
   RequestOut,
   Environment,
@@ -93,7 +96,9 @@ type CollectionsAction =
       type: "CREATE_SUCCESS";
       payload: { collection: Collection; expanded: Set<number> };
     }
-  | { type: "CREATE_ERROR" };
+  | { type: "CREATE_ERROR" }
+  | { type: "UPDATE_COLLECTION"; payload: Collection }
+  | { type: "DELETE_COLLECTION"; payload: number };
 
 const initialCollectionsState: CollectionsState = {
   collections: [],
@@ -139,6 +144,29 @@ function collectionsReducer(
       };
     case "CREATE_ERROR":
       return { ...state, creating: false };
+    case "UPDATE_COLLECTION": {
+      const updated = action.payload;
+      return {
+        ...state,
+        collections: state.collections.map((c) =>
+          c.id === updated.id ? updated : c,
+        ),
+      };
+    }
+    case "DELETE_COLLECTION": {
+      const id = action.payload;
+      const newCollections = state.collections.filter((c) => c.id !== id);
+      const newExpanded = new Set(state.expanded);
+      newExpanded.delete(id);
+      const newRequests = { ...state.requests };
+      delete newRequests[id];
+      return {
+        ...state,
+        collections: newCollections,
+        expanded: newExpanded,
+        requests: newRequests,
+      };
+    }
     default:
       return state;
   }
@@ -194,7 +222,9 @@ const initialEnvState: EnvState = {
 type EnvAction =
   | { type: "FETCH_START" }
   | { type: "FETCH_SUCCESS"; payload: Environment[] }
-  | { type: "FETCH_ERROR"; payload: string };
+  | { type: "FETCH_ERROR"; payload: string }
+  | { type: "UPDATE_ENVIRONMENT"; payload: Environment }
+  | { type: "DELETE_ENVIRONMENT"; payload: number };
 
 function envReducer(state: EnvState, action: EnvAction): EnvState {
   switch (action.type) {
@@ -204,6 +234,22 @@ function envReducer(state: EnvState, action: EnvAction): EnvState {
       return { ...state, loading: false, environments: action.payload };
     case "FETCH_ERROR":
       return { ...state, loading: false, error: action.payload };
+    case "UPDATE_ENVIRONMENT": {
+      const updated = action.payload;
+      return {
+        ...state,
+        environments: state.environments.map((e) =>
+          e.id === updated.id ? updated : e,
+        ),
+      };
+    }
+    case "DELETE_ENVIRONMENT": {
+      const id = action.payload;
+      return {
+        ...state,
+        environments: state.environments.filter((e) => e.id !== id),
+      };
+    }
     default:
       return state;
   }
@@ -244,6 +290,22 @@ export default function Sidebar({ onSelectRequest, selectedRequestId }: Props) {
 
   // ---- Modal ----
   const [showEnvModal, setShowEnvModal] = useState(false);
+
+  // ---- Local UI state for dropdowns and inline editing ----
+  const [collectionDropdownOpen, setCollectionDropdownOpen] = useState<
+    Record<number, boolean>
+  >({});
+  const [environmentDropdownOpen, setEnvironmentDropdownOpen] = useState<
+    Record<number, boolean>
+  >({});
+  const [editingCollectionId, setEditingCollectionId] = useState<number | null>(
+    null,
+  );
+  const [editingEnvironmentId, setEditingEnvironmentId] = useState<
+    number | null
+  >(null);
+  const [tempName, setTempName] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // ---- Fetch collections ----
   const fetchCollections = async () => {
@@ -355,6 +417,60 @@ export default function Sidebar({ onSelectRequest, selectedRequestId }: Props) {
     }
   };
 
+  const handleRenameCollection = async (id: number, newName: string) => {
+    if (!newName.trim()) return;
+    try {
+      const updated = await updateCollection(id, newName.trim());
+      collectionsDispatch({ type: "UPDATE_COLLECTION", payload: updated });
+    } catch (err) {
+      alert("Failed to rename collection");
+      console.error(err);
+    } finally {
+      setEditingCollectionId(null);
+      setCollectionDropdownOpen((prev) => ({ ...prev, [id]: false }));
+    }
+  };
+
+  const handleDeleteCollection = async (id: number) => {
+    if (!confirm("Delete this collection and all its requests?")) return;
+    try {
+      await deleteCollection(id);
+      collectionsDispatch({ type: "DELETE_COLLECTION", payload: id });
+    } catch (err) {
+      alert("Failed to delete collection");
+      console.error(err);
+    } finally {
+      setCollectionDropdownOpen((prev) => ({ ...prev, [id]: false }));
+    }
+  };
+
+  const handleRenameEnvironment = async (id: number, newName: string) => {
+    if (!newName.trim()) return;
+    try {
+      const updated = await updateEnvironment(id, newName.trim());
+      envDispatch({ type: "UPDATE_ENVIRONMENT", payload: updated });
+    } catch (err) {
+      alert("Failed to rename environment");
+      console.error(err);
+    } finally {
+      setEditingEnvironmentId(null);
+      setEnvironmentDropdownOpen((prev) => ({ ...prev, [id]: false }));
+    }
+  };
+
+  const handleDeleteEnvironment = async (id: number) => {
+    if (!confirm("Delete this environment?")) return;
+    try {
+      await deleteEnvironment(id);
+      envDispatch({ type: "DELETE_ENVIRONMENT", payload: id });
+    } catch (err) {
+      alert("Failed to delete environment");
+      console.error(err);
+    } finally {
+      setEnvironmentDropdownOpen((prev) => ({ ...prev, [id]: false }));
+    }
+  };
+
   const handleEnvModalSuccess = () => {
     fetchEnvironments();
   };
@@ -395,54 +511,122 @@ export default function Sidebar({ onSelectRequest, selectedRequestId }: Props) {
         </div>
       );
     }
-    return collections.map((collection) => (
-      <div key={collection.id} className="border-b border-gray-800/50">
-        <div
-          className="flex items-center gap-2 px-3 py-2 hover:bg-gray-800 cursor-pointer"
-          onClick={() => toggleCollection(collection.id)}
-        >
-          {expanded.has(collection.id) ? (
-            <ChevronDown className="w-4 h-4 text-gray-500" />
-          ) : (
-            <ChevronRight className="w-4 h-4 text-gray-500" />
-          )}
-          <Folder className="w-4 h-4 text-yellow-500" />
-          <span className="text-sm font-medium text-white">
-            {collection.name}
-          </span>
-          <span className="text-xs text-gray-500 ml-auto">
-            {requests[collection.id]?.length || 0}
-          </span>
-        </div>
-        {expanded.has(collection.id) && (
-          <div className="pl-8 pr-2 py-1">
-            {requests[collection.id]?.map((req) => (
-              <div
-                key={req.id}
-                className={`flex items-center gap-2 px-2 py-1.5 rounded text-sm cursor-pointer hover:bg-gray-800 ${
-                  selectedRequestId === req.id ? "bg-gray-800" : ""
-                }`}
-                onClick={() => onSelectRequest(req.id)}
-              >
-                <span
-                  className={`text-xs font-mono font-semibold ${methodColors[req.method] || "text-gray-400"}`}
-                >
-                  {req.method}
-                </span>
-                <span className="text-gray-300 truncate flex-1">{req.url}</span>
-                <Globe className="w-3 h-3 text-gray-600 flex-shrink-0" />
-              </div>
-            ))}
-            {(!requests[collection.id] ||
-              requests[collection.id].length === 0) && (
-              <div className="text-xs text-gray-500 px-2 py-1 italic">
-                No requests
-              </div>
+    return collections.map((collection) => {
+      const isEditing = editingCollectionId === collection.id;
+      const isDropdownOpen = collectionDropdownOpen[collection.id] || false;
+
+      return (
+        <div key={collection.id}>
+          <div
+            className="flex items-center gap-2 px-3 py-2 hover:bg-gray-800 cursor-pointer group"
+            onClick={() => toggleCollection(collection.id)}
+          >
+            {expanded.has(collection.id) ? (
+              <ChevronDown className="w-4 h-4 text-gray-500" />
+            ) : (
+              <ChevronRight className="w-4 h-4 text-gray-500" />
             )}
+            {isEditing ? (
+              <input
+                ref={inputRef}
+                type="text"
+                value={tempName}
+                onChange={(e) => setTempName(e.target.value)}
+                onBlur={() => handleRenameCollection(collection.id, tempName)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter")
+                    handleRenameCollection(collection.id, tempName);
+                  if (e.key === "Escape") {
+                    setEditingCollectionId(null);
+                    setCollectionDropdownOpen((prev) => ({
+                      ...prev,
+                      [collection.id]: false,
+                    }));
+                  }
+                }}
+                className="bg-transparent rounded px-1 text-sm text-white focus:outline-none focus:border-blue-500"
+                autoFocus
+              />
+            ) : (
+              <span className="text-sm font-medium text-white">
+                {collection.name}
+              </span>
+            )}
+            <div className="ml-auto flex items-center gap-1">
+              <div className="relative">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setCollectionDropdownOpen((prev) => ({
+                      ...prev,
+                      [collection.id]: !prev[collection.id],
+                    }));
+                  }}
+                  className="text-gray-500 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <MoreHorizontal className="w-4 h-4" />
+                </button>
+                {isDropdownOpen && (
+                  <div className="absolute right-0 mt-1 w-32 bg-gray-800 border border-gray-700 rounded shadow-lg z-10">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingCollectionId(collection.id);
+                        setTempName(collection.name);
+                        setCollectionDropdownOpen((prev) => ({
+                          ...prev,
+                          [collection.id]: false,
+                        }));
+                      }}
+                      className="block w-full text-left px-3 py-1.5 text-sm text-gray-200 hover:bg-gray-700"
+                    >
+                      Rename
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteCollection(collection.id);
+                      }}
+                      className="block w-full text-left px-3 py-1.5 text-sm text-red-400 hover:bg-gray-700"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
-        )}
-      </div>
-    ));
+          {expanded.has(collection.id) && (
+            <div className="pl-8 pr-2 py-1">
+              {requests[collection.id]?.map((req) => (
+                <div
+                  key={req.id}
+                  className={`flex items-center gap-2 px-2 py-1.5 rounded text-sm cursor-pointer hover:bg-gray-800 ${
+                    selectedRequestId === req.id ? "bg-gray-800" : ""
+                  }`}
+                  onClick={() => onSelectRequest(req.id)}
+                >
+                  <span
+                    className={`text-xs font-mono font-semibold ${methodColors[req.method] || "text-gray-400"}`}
+                  >
+                    {req.method}
+                  </span>
+                  <span className="text-gray-300 truncate flex-1">
+                    {req.url}
+                  </span>
+                </div>
+              ))}
+              {(!requests[collection.id] ||
+                requests[collection.id].length === 0) && (
+                <div className="text-xs text-gray-500 px-2 py-1 italic">
+                  No requests
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      );
+    });
   };
 
   // ---- Render History ----
@@ -525,15 +709,84 @@ export default function Sidebar({ onSelectRequest, selectedRequestId }: Props) {
     }
     return (
       <div className="px-3 py-1 space-y-1">
-        {environments.map((env) => (
-          <div
-            key={env.id}
-            className="text-xs text-gray-300 py-0.5 flex items-center gap-2"
-          >
-            <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-            {env.name}
-          </div>
-        ))}
+        {environments.map((env) => {
+          const isEditing = editingEnvironmentId === env.id;
+          const isDropdownOpen = environmentDropdownOpen[env.id] || false;
+
+          return (
+            <div
+              key={env.id}
+              className="flex items-center gap-2 py-0.5 group hover:bg-gray-800 px-1 rounded"
+            >
+              <span className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0"></span>
+              {isEditing ? (
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={tempName}
+                  onChange={(e) => setTempName(e.target.value)}
+                  onBlur={() => handleRenameEnvironment(env.id, tempName)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter")
+                      handleRenameEnvironment(env.id, tempName);
+                    if (e.key === "Escape") {
+                      setEditingEnvironmentId(null);
+                      setEnvironmentDropdownOpen((prev) => ({
+                        ...prev,
+                        [env.id]: false,
+                      }));
+                    }
+                  }}
+                  className="bg-transparent border border-gray-600 rounded px-1 text-xs text-white focus:outline-none focus:border-blue-500 flex-1"
+                  autoFocus
+                />
+              ) : (
+                <span className="text-xs text-gray-300 flex-1">{env.name}</span>
+              )}
+              <div className="relative flex-shrink-0">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEnvironmentDropdownOpen((prev) => ({
+                      ...prev,
+                      [env.id]: !prev[env.id],
+                    }));
+                  }}
+                  className="text-gray-500 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <MoreHorizontal className="w-3 h-3" />
+                </button>
+                {isDropdownOpen && (
+                  <div className="absolute right-0 mt-1 w-32 bg-gray-800 border border-gray-700 rounded shadow-lg z-10">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingEnvironmentId(env.id);
+                        setTempName(env.name);
+                        setEnvironmentDropdownOpen((prev) => ({
+                          ...prev,
+                          [env.id]: false,
+                        }));
+                      }}
+                      className="block w-full text-left px-3 py-1.5 text-sm text-gray-200 hover:bg-gray-700"
+                    >
+                      Rename
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteEnvironment(env.id);
+                      }}
+                      className="block w-full text-left px-3 py-1.5 text-sm text-red-400 hover:bg-gray-700"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
     );
   };

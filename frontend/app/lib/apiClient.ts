@@ -168,3 +168,43 @@ export async function getVariables(envId: number): Promise<Variable[]> {
   if (!res.ok) throw new Error("Failed to fetch variables");
   return res.json();
 }
+
+export async function updateCollection(
+  id: number,
+  name: string,
+): Promise<Collection> {
+  const res = await fetch(`${API_BASE}/collections/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) throw new Error("Failed to update collection");
+  return res.json();
+}
+
+export async function deleteCollection(id: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/collections/${id}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error("Failed to delete collection");
+}
+
+export async function updateEnvironment(
+  id: number,
+  name: string,
+): Promise<Environment> {
+  const res = await fetch(`${API_BASE}/environments/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) throw new Error("Failed to update environment");
+  return res.json();
+}
+
+export async function deleteEnvironment(id: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/environments/${id}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error("Failed to delete environment");
+}
