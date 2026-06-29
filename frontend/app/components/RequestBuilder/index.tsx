@@ -47,11 +47,40 @@ const buildResponseDisplay = (request: RequestOut) => {
   return null;
 };
 
+// ---- Default blank request ----
+const DEFAULT_BLANK_REQUEST: RequestOut = {
+  id: -1,
+  collection_id: null,
+  state: "DRAFT",
+  method: "GET",
+  url: "",
+  query_params: {},
+  headers: {},
+  auth: null,
+  body: "",
+  body_type: "none",
+  response_status: null,
+  response_headers: null,
+  response_body: null,
+  response_time: null,
+  created_at: new Date().toISOString(),
+  executed_at: null,
+};
+
+const createBlankTab = () => ({
+  id: generateTabId(),
+  requestId: -1,
+  method: "GET",
+  url: "",
+  name: "Untitled",
+  requestData: DEFAULT_BLANK_REQUEST,
+});
+
 // ---- State & Actions ----
 type State = {
   tabs: Tab[];
   activeIndex: number;
-  activeTab: string; // 'params', 'auth', 'headers', 'body', etc.
+  activeTab: string;
   method: string;
   url: string;
   queryParams: Record<string, string>;
@@ -84,8 +113,8 @@ type Action =
     };
 
 const initialState: State = {
-  tabs: [],
-  activeIndex: -1,
+  tabs: [createBlankTab()],
+  activeIndex: 0,
   activeTab: "params",
   method: "GET",
   url: "",
@@ -153,32 +182,7 @@ const reducer = (state: State, action: Action): State => {
       };
     }
     case "OPEN_BLANK_TAB": {
-      const blankRequest: RequestOut = {
-        id: -1,
-        collection_id: null,
-        state: "DRAFT",
-        method: "GET",
-        url: "",
-        query_params: {},
-        headers: {},
-        auth: null,
-        body: "",
-        body_type: "none",
-        response_status: null,
-        response_headers: null,
-        response_body: null,
-        response_time: null,
-        created_at: new Date().toISOString(),
-        executed_at: null,
-      };
-      const newTab: Tab = {
-        id: generateTabId(),
-        requestId: -1,
-        method: "GET",
-        url: "",
-        name: "Untitled",
-        requestData: blankRequest,
-      };
+      const newTab = createBlankTab();
       const newTabs = [...state.tabs, newTab];
       const newIndex = newTabs.length - 1;
       return {
@@ -222,10 +226,22 @@ const reducer = (state: State, action: Action): State => {
       const index = action.payload;
       const newTabs = state.tabs.filter((_, i) => i !== index);
       if (newTabs.length === 0) {
+        // If all tabs closed, create a new blank tab
+        const blankTab = createBlankTab();
         return {
-          ...initialState,
-          tabs: [],
-          activeIndex: -1,
+          ...state,
+          tabs: [blankTab],
+          activeIndex: 0,
+          method: "GET",
+          url: "",
+          queryParams: {},
+          headers: {},
+          auth: null,
+          body: "",
+          bodyType: "none",
+          currentRequestId: null,
+          response: null,
+          error: null,
         };
       }
       let newActiveIndex = state.activeIndex;
@@ -254,8 +270,43 @@ const reducer = (state: State, action: Action): State => {
     }
     case "SET_ACTIVE_TAB":
       return { ...state, activeTab: action.payload };
-    case "SET_REQUEST_FIELDS":
-      return { ...state, ...action.payload };
+    case "SET_REQUEST_FIELDS": {
+      const newState = { ...state, ...action.payload };
+      // Update the active tab's method, url, and queryParams if they changed
+      if (newState.activeIndex >= 0 && newState.tabs[newState.activeIndex]) {
+        const tab = newState.tabs[newState.activeIndex];
+        const updatedTab = { ...tab };
+        let changed = false;
+        if (
+          action.payload.method !== undefined &&
+          action.payload.method !== tab.method
+        ) {
+          updatedTab.method = action.payload.method;
+          changed = true;
+        }
+        if (
+          action.payload.url !== undefined &&
+          action.payload.url !== tab.url
+        ) {
+          updatedTab.url = action.payload.url;
+          changed = true;
+        }
+        if (action.payload.queryParams !== undefined) {
+          // Update the requestData.query_params
+          updatedTab.requestData = {
+            ...tab.requestData,
+            query_params: action.payload.queryParams,
+          };
+          changed = true;
+        }
+        if (changed) {
+          const newTabs = [...newState.tabs];
+          newTabs[newState.activeIndex] = updatedTab;
+          newState.tabs = newTabs;
+        }
+      }
+      return newState;
+    }
     case "SET_LOADING":
       return { ...state, loading: action.payload };
     case "SET_ERROR":
@@ -339,11 +390,8 @@ export default function RequestBuilder({
     }
   }, [initialRequest]);
 
-  // Inside RequestBuilder component, after state declarations:
-
   // Build the full URL with query params
   const buildFullUrl = (base: string, params: Record<string, string>) => {
-    // Filter out keys or values that are empty (trimmed)
     const filteredParams: Record<string, string> = {};
     for (const [key, value] of Object.entries(params)) {
       const trimmedKey = key.trim();
@@ -360,10 +408,8 @@ export default function RequestBuilder({
 
   const fullUrl = buildFullUrl(url, queryParams);
 
-  // Handler to parse a full URL and update both url and queryParams
   const handleUrlChange = (input: string) => {
     try {
-      // Try to parse as URL (if it has protocol)
       const parsed = new URL(input);
       const base = parsed.origin + parsed.pathname;
       const params: Record<string, string> = {};
@@ -375,8 +421,6 @@ export default function RequestBuilder({
         payload: { url: base, queryParams: params },
       });
     } catch {
-      // If parsing fails, just set the url as the raw input (no query params)
-      // We could also try to split on '?' manually
       const [base, query] = input.split("?");
       if (query) {
         const params: Record<string, string> = {};
@@ -396,7 +440,6 @@ export default function RequestBuilder({
     }
   };
 
-  // ---- Handlers ----
   const handleSend = async () => {
     const payload: SendRequestPayload = {
       method,
@@ -439,7 +482,6 @@ export default function RequestBuilder({
     name: tab.name,
   }));
 
-  // Combine internal and external loading
   const isLoading = internalLoading || externalLoading || false;
 
   return (
@@ -470,14 +512,13 @@ export default function RequestBuilder({
         setMethod={(m) =>
           dispatch({ type: "SET_REQUEST_FIELDS", payload: { method: m } })
         }
-        url={fullUrl} // <-- display full URL
-        setUrl={handleUrlChange} // <-- parse input
+        url={fullUrl}
+        setUrl={handleUrlChange}
         onSend={handleSend}
         onSave={handleSaveClick}
         loading={isLoading}
       />
 
-      {/* Tabs: Params, Auth, Headers, Body, etc. */}
       <RequestTabs
         activeTab={activeTab}
         setActiveTab={(tab) =>
