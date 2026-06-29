@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import TopBar from "./components/TopBar";
-import Sidebar, { type SidebarHandle } from "./components/Sidebar";
+import Sidebar from "./components/Sidebar";
 import RequestBuilder, {
   type RequestBuilderHandle,
 } from "./components/RequestBuilder";
@@ -17,7 +17,6 @@ export default function Home() {
   const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<
     number | null
   >(null);
-  const sidebarRef = useRef<SidebarHandle>(null);
   const requestBuilderRef = useRef<RequestBuilderHandle>(null);
 
   const handleSelectRequest = async (id: number) => {
@@ -34,12 +33,6 @@ export default function Home() {
     }
   };
 
-  const handleRequestSent = () => {
-    if (sidebarRef.current) {
-      sidebarRef.current.refreshHistory();
-    }
-  };
-
   const handleOpenEnvironmentTab = () => {
     requestBuilderRef.current?.openEnvironmentTab();
   };
@@ -52,7 +45,6 @@ export default function Home() {
       />
       <div className="flex flex-1 overflow-hidden">
         <Sidebar
-          ref={sidebarRef}
           onSelectRequest={handleSelectRequest}
           selectedRequestId={selectedRequestId}
           onOpenEnvironmentTab={handleOpenEnvironmentTab}
@@ -65,7 +57,6 @@ export default function Home() {
           <RequestBuilder
             ref={requestBuilderRef}
             initialRequest={currentRequest}
-            onRequestSent={handleRequestSent}
             environmentId={selectedEnvironmentId || undefined}
             loading={loading}
           />
