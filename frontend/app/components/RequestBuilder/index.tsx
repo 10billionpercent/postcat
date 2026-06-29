@@ -505,22 +505,24 @@ export default function RequestBuilder({
 
   return (
     <div className="flex flex-col h-full bg-black text-white">
-      <div className="flex items-center border-b border-gray-800 bg-black shrink-0">
-        <RequestTabsBar
-          tabs={tabsBarData}
-          activeTabId={activeTabId}
-          onSelectTab={(id) => {
-            const index = tabs.findIndex((t) => t.id === id);
-            if (index >= 0) dispatch({ type: "SELECT_TAB", payload: index });
-          }}
-          onCloseTab={(id) => {
-            const index = tabs.findIndex((t) => t.id === id);
-            if (index >= 0) dispatch({ type: "CLOSE_TAB", payload: index });
-          }}
-        />
+      <div className="flex items-center border-b border-gray-800 bg-black shrink-0 px-2">
+        <div className="flex-1 min-w-0 overflow-x-auto">
+          <RequestTabsBar
+            tabs={tabsBarData}
+            activeTabId={activeTabId}
+            onSelectTab={(id) => {
+              const index = tabs.findIndex((t) => t.id === id);
+              if (index >= 0) dispatch({ type: "SELECT_TAB", payload: index });
+            }}
+            onCloseTab={(id) => {
+              const index = tabs.findIndex((t) => t.id === id);
+              if (index >= 0) dispatch({ type: "CLOSE_TAB", payload: index });
+            }}
+          />
+        </div>
         <button
           onClick={() => dispatch({ type: "OPEN_BLANK_TAB" })}
-          className="px-2 py-1 text-gray-400 hover:text-white hover:bg-gray-800 rounded"
+          className="flex-shrink-0 ml-1 p-1 text-gray-400 hover:text-white hover:bg-gray-800 rounded"
         >
           <Plus className="w-4 h-4" />
         </button>
